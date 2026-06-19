@@ -1,0 +1,31 @@
+Necesito crear una mini aplicación de escritorio para Windows súper optimizada, eficiente y de muy bajo consumo de recursos, que funcione 100% offline (gratis, sin APIs externas). 
+
+La aplicación debe estar desarrollada en C# (.NET) utilizando Windows Forms o WPF para la interfaz.
+
+Requisitos detallados del sistema:
+
+1. INTERFAZ (WIDGET Y CONFIGURACIÓN):
+- Una ventana pequeña, minimalista y sin bordes (borderless) que actúe como Widget.
+- Debe tener la propiedad 'TopMost' activa para que SIEMPRE se muestre por encima de cualquier otra aplicación abierta en Windows.
+- Debe incluir un pequeño botón de configuración (o menú de clic derecho) que abra una interfaz simple para cambiar la tecla de activación (HotKey). Guarda esta configuración de forma persistente en un archivo local (ej. 'settings.json').
+- Debe mostrar visualmente el estado actual mediante colores o texto corto: 
+  * "Inactivo" (Esperando tecla)
+  * "Escuchando..." (Se activó al pulsar la tecla)
+  * "Transcribiendo..." (Se pulsó la tecla por segunda vez y está procesando)
+
+2. FUNCIONAMIENTO EN SEGUNDO PLANO Y COMPORTAMIENTO DE TECLA (TOGGLE):
+- La aplicación debe ejecutarse en segundo plano (background).
+- Debe registrar la tecla elegida por el usuario usando la API nativa de Windows 'RegisterHotKey' (user32.dll).
+- El flujo de interacción con la tecla debe ser de ALTERNANCIA (TOGGLE):
+  * Clic 1 (Presionar y soltar la tecla): Activa el micrófono por defecto del sistema y empieza a grabar el audio en segundo plano. El widget cambia a estado "Escuchando...".
+  * Clic 2 (Presionar y soltar la misma tecla otra vez): Detiene la grabación inmediatamente y pasa el audio al motor. El widget cambia a estado "Transcribiendo...".
+
+3. MOTOR DE SPEECH-TO-TEXT (OFFLINE):
+- Utiliza la librería 'Whisper.net' (el wrapper de whisper.cpp para .NET).
+- Configura el sistema para que utilice de forma local el modelo 'ggml-tiny' en español (pesa ~75MB, optimizado para CPU, ejecución local instantánea y gratis).
+
+4. INYECCIÓN DE TEXTO EN EL CURSOR ACTIVO:
+- En cuanto Whisper termine de procesar el texto, la aplicación debe utilizar la API nativa de Windows 'SendInput' (user32.dll) para simular la pulsación de teclas e inyectar el texto directamente en el campo de texto o aplicación donde se encuentre el cursor de escritura (caret) activo en ese preciso momento. 
+- NO debes utilizar el portapapeles (Clipboard) para evitar borrar o sobrescribir lo que el usuario tenga copiado en su sistema.
+
+Por favor, inicia en Modo Plan. Analiza las dependencias de NuGet necesarias (Whisper.net y Whisper.net.Runtime), diseña la arquitectura del proyecto C# (incluyendo la persistencia de la configuración de la tecla) y muéstrame el plan detallado antes de pasar al Modo Build.
