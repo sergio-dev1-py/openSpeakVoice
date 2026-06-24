@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("VoiceToTextWidget")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+29ab6be6500e04915574eff28b9bf6fc672dfca1")]
 [assembly: System.Reflection.AssemblyProductAttribute("VoiceToTextWidget")]
 [assembly: System.Reflection.AssemblyTitleAttribute("VoiceToTextWidget")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

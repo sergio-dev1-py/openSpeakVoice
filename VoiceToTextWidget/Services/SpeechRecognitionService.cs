@@ -8,17 +8,19 @@ namespace VoiceToTextWidget.Services;
 public sealed class SpeechRecognitionService : IDisposable
 {
     private const string ApiEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
-    private const string Model = "whisper-large-v3-turbo";
+    private const string Model = "whisper-large-v3";
     private const int SampleRate = 16000;
     private const int MinAudioBytes = SampleRate * 2 / 4;
 
     private readonly HttpClient _httpClient;
     private readonly SettingsService _settings;
+    private readonly ApiKeyManager _apiKeyManager;
     private bool _disposed;
 
-    public SpeechRecognitionService(SettingsService settings)
+    public SpeechRecognitionService(SettingsService settings, ApiKeyManager apiKeyManager)
     {
         _settings = settings;
+        _apiKeyManager = apiKeyManager;
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
     }
 
@@ -43,13 +45,8 @@ public sealed class SpeechRecognitionService : IDisposable
             return string.Empty;
         }
 
-        var apiKey = _settings.Settings.ApiKey;
+        var apiKey = _apiKeyManager.GetKey();
         var language = _settings.Settings.Language;
-
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw new InvalidOperationException("API key not configured. Set your Groq API key in settings.");
-        }
 
         try
         {
@@ -75,6 +72,8 @@ public sealed class SpeechRecognitionService : IDisposable
                 Debug.WriteLine($"[Groq] API error {response.StatusCode}: {responseBody}");
                 throw new Exception($"Groq API error: {response.StatusCode}");
             }
+
+            _apiKeyManager.RecordUsage(apiKey);
 
             using var doc = JsonDocument.Parse(responseBody);
             var text = doc.RootElement.GetProperty("text").GetString();

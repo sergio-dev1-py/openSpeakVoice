@@ -66,9 +66,15 @@ public sealed class SettingsService
         Save();
     }
 
-    public void UpdateApiKey(string apiKey)
+    public void UpdateApiKey1(string apiKey)
     {
-        _settings.ApiKey = apiKey;
+        _settings.ApiKey1 = apiKey;
+        Save();
+    }
+
+    public void UpdateApiKey2(string apiKey)
+    {
+        _settings.ApiKey2 = apiKey;
         Save();
     }
 }

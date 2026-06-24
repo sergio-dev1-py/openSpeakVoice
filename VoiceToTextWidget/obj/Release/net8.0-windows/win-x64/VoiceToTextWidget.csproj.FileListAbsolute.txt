@@ -480,3 +480,4 @@ C:\Users\UserPy\Documents\Projectvoicetotext\VoiceToTextWidget\obj\Release\net8.
 C:\Users\UserPy\Documents\Projectvoicetotext\VoiceToTextWidget\obj\Release\net8.0-windows\win-x64\refint\VoiceToTextWidget.dll
 C:\Users\UserPy\Documents\Projectvoicetotext\VoiceToTextWidget\obj\Release\net8.0-windows\win-x64\VoiceToTextWidget.genruntimeconfig.cache
 C:\Users\UserPy\Documents\Projectvoicetotext\VoiceToTextWidget\obj\Release\net8.0-windows\win-x64\ref\VoiceToTextWidget.dll
+C:\Users\UserPy\Documents\Projectvoicetotext\VoiceToTextWidget\obj\Release\net8.0-windows\win-x64\VoiceToTextWidget.sourcelink.json

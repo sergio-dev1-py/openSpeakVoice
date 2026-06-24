@@ -12,11 +12,25 @@ public class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ModifierKeys Modifiers { get; set; } = ModifierKeys.None;
     
-    public string ApiKey { get; set; } = string.Empty;
+    public string ApiKey1 { get; set; } = string.Empty;
+    public string ApiKey2 { get; set; } = string.Empty;
+    
+    public int ApiKey1RequestCount { get; set; } = 0;
+    public int ApiKey2RequestCount { get; set; } = 0;
+    
+    public DateTime ApiKey1WindowStart { get; set; } = DateTime.MinValue;
+    public DateTime ApiKey2WindowStart { get; set; } = DateTime.MinValue;
+    
     public string Language { get; set; } = "es";
     
     public int WidgetPosX { get; set; } = 100;
     public int WidgetPosY { get; set; } = 100;
+
+    [JsonIgnore]
+    public string ActiveApiKey => ApiKey1;
+
+    [JsonIgnore]
+    public bool HasAnyKey => !string.IsNullOrWhiteSpace(ApiKey1) || !string.IsNullOrWhiteSpace(ApiKey2);
 }
 
 [Flags]

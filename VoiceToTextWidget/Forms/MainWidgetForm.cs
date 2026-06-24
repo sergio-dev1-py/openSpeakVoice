@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using VoiceToTextWidget.Models;
 using VoiceToTextWidget.Native;
@@ -13,35 +14,56 @@ public sealed class MainWidgetForm : Form
     private readonly AudioCaptureService _audioCapture;
     private readonly SpeechRecognitionService _speechRecognition;
     private readonly TextInjectionService _textInjection;
-    
+    private readonly ApiKeyManager _apiKeyManager;
+
     private HotKeyService? _hotKeyService;
-    
-    private readonly Label _statusLabel;
+
     private readonly ContextMenuStrip _contextMenu;
     private readonly System.Windows.Forms.Timer _topMostTimer;
+    private readonly System.Windows.Forms.Timer _animationTimer;
     private AppState _currentState = AppState.Idle;
     private bool _isDragging;
     private Point _dragStart;
+
+    private int _pulseAlpha = 180;
+    private int _pulseDirection = 1;
+    private int _animFrame;
+    private int _animTick;
+
+    private const int WidgetWidth = 160;
+    private const int WidgetHeight = 38;
+    private const int CornerRadius = 18;
+
+    private static readonly Color ColorIdle = Color.FromArgb(45, 45, 48);
+    private static readonly Color ColorListening = Color.FromArgb(200, 50, 50);
+    private static readonly Color ColorTranscribing = Color.FromArgb(200, 140, 40);
 
     public MainWidgetForm(
         SettingsService settingsService,
         AudioCaptureService audioCapture,
         SpeechRecognitionService speechRecognition,
-        TextInjectionService textInjection)
+        TextInjectionService textInjection,
+        ApiKeyManager apiKeyManager)
     {
         _settingsService = settingsService;
         _audioCapture = audioCapture;
         _speechRecognition = speechRecognition;
         _textInjection = textInjection;
+        _apiKeyManager = apiKeyManager;
 
-        _statusLabel = InitializeComponent();
         _contextMenu = SetupContextMenu();
         ContextMenuStrip = _contextMenu;
         _audioCapture.AudioChunkCaptured += OnAudioChunkCaptured;
 
+        InitializeComponent();
+
         _topMostTimer = new System.Windows.Forms.Timer { Interval = 2000 };
         _topMostTimer.Tick += (_, _) => EnforceTopMost();
         _topMostTimer.Start();
+
+        _animationTimer = new System.Windows.Forms.Timer { Interval = 50 };
+        _animationTimer.Tick += OnAnimationTick;
+        _animationTimer.Start();
 
         Deactivate += OnDeactivate;
 
@@ -49,10 +71,186 @@ public sealed class MainWidgetForm : Form
         UpdateUI();
     }
 
+    private void InitializeComponent()
+    {
+        Text = "VoiceToText";
+        FormBorderStyle = FormBorderStyle.None;
+        TopMost = true;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.Manual;
+        Size = new Size(WidgetWidth, WidgetHeight);
+        DoubleBuffered = true;
+        BackColor = ColorIdle;
+    }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.ExStyle |= 0x00000008;
+            return cp;
+        }
+    }
+
     public void SetHotKeyService(HotKeyService hotKeyService)
     {
         _hotKeyService = hotKeyService;
         _hotKeyService.HotKeyPressed += OnHotKeyPressed;
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+
+        var bgColor = GetAnimatedBackground();
+        var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+
+        using var path = GetRoundedRectPath(rect, CornerRadius);
+        using var bgBrush = new SolidBrush(bgColor);
+        g.FillPath(bgBrush, path);
+
+        using var borderPen = new Pen(Color.FromArgb(60, 60, 63), 1);
+        g.DrawPath(borderPen, path);
+
+        Region = new Region(path);
+
+        DrawMicIcon(g, rect);
+
+        DrawStatusText(g, rect);
+    }
+
+    private Color GetAnimatedBackground()
+    {
+        return _currentState switch
+        {
+            AppState.Listening => Color.FromArgb(_pulseAlpha, 180, 40, 40),
+            AppState.Transcribing => ColorTranscribing,
+            _ => ColorIdle
+        };
+    }
+
+    private void DrawMicIcon(Graphics g, Rectangle bounds)
+    {
+        Color micColor;
+        switch (_currentState)
+        {
+            case AppState.Listening:
+                micColor = Color.FromArgb(255, 255, 255);
+                break;
+            case AppState.Transcribing:
+                micColor = Color.FromArgb(200, 220, 255);
+                break;
+            default:
+                micColor = Color.FromArgb(140, 140, 140);
+                break;
+        }
+
+        int cx = bounds.Left + 22;
+        int cy = bounds.Top + bounds.Height / 2;
+
+        using var pen = new Pen(micColor, 2f);
+        using var brush = new SolidBrush(micColor);
+
+        g.FillRoundedRect(brush, cx - 5, cy - 10, 10, 15, 5);
+
+        using var arcPath = new GraphicsPath();
+        arcPath.AddArc(cx - 9, cy - 14, 18, 14, 180, 180);
+        arcPath.CloseFigure();
+        g.DrawPath(pen, arcPath);
+
+        g.DrawLine(pen, cx, cy + 1, cx, cy + 7);
+        g.DrawLine(pen, cx - 5, cy + 7, cx + 5, cy + 7);
+    }
+
+    private void DrawStatusText(Graphics g, Rectangle bounds)
+    {
+        string text;
+        Color textColor;
+
+        switch (_currentState)
+        {
+            case AppState.Listening:
+                text = "Escuchando";
+                textColor = Color.FromArgb(255, 255, 255);
+                break;
+            case AppState.Transcribing:
+                var dots = new string('.', (_animFrame % 3) + 1);
+                text = "Transcribiendo" + dots;
+                textColor = Color.FromArgb(255, 255, 255);
+                break;
+            default:
+                text = "Inactivo";
+                textColor = Color.FromArgb(140, 140, 140);
+                break;
+        }
+
+        using var font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        using var brush = new SolidBrush(textColor);
+        var textSize = g.MeasureString(text, font);
+        var textX = bounds.Left + 40;
+        var textY = (bounds.Top + (bounds.Height - textSize.Height) / 2);
+        g.DrawString(text, font, brush, textX, textY);
+    }
+
+    private void OnAnimationTick(object? sender, EventArgs e)
+    {
+        if (_currentState == AppState.Listening)
+        {
+            _pulseAlpha += 8 * _pulseDirection;
+            if (_pulseAlpha >= 255) { _pulseAlpha = 255; _pulseDirection = -1; }
+            if (_pulseAlpha <= 140) { _pulseAlpha = 140; _pulseDirection = 1; }
+            Invalidate();
+        }
+        else if (_currentState == AppState.Transcribing)
+        {
+            _animTick++;
+            if (_animTick >= 8)
+            {
+                _animTick = 0;
+                _animFrame++;
+                Invalidate();
+            }
+        }
+    }
+
+    private ContextMenuStrip SetupContextMenu()
+    {
+        var contextMenu = new ContextMenuStrip
+        {
+            BackColor = Color.FromArgb(30, 30, 30),
+            ForeColor = Color.White,
+            Renderer = new DarkMenuRenderer()
+        };
+
+        var settingsItem = new ToolStripMenuItem("Configurar tecla...")
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30)
+        };
+        settingsItem.Click += (_, _) => ShowSettingsDialog();
+
+        var apiKeyItem = new ToolStripMenuItem("Configurar API Keys...")
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30)
+        };
+        apiKeyItem.Click += (_, _) => ShowApiKeyDialog();
+
+        var separator = new ToolStripSeparator { BackColor = Color.FromArgb(50, 50, 50) };
+
+        var exitItem = new ToolStripMenuItem("Salir")
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30)
+        };
+        exitItem.Click += (_, _) => Application.Exit();
+
+        contextMenu.Items.AddRange(new ToolStripItem[] { settingsItem, apiKeyItem, separator, exitItem });
+        return contextMenu;
     }
 
     private void EnforceTopMost()
@@ -79,88 +277,11 @@ public sealed class MainWidgetForm : Form
         }
     }
 
-    private Label InitializeComponent()
-    {
-        Text = "VoiceToText";
-        FormBorderStyle = FormBorderStyle.None;
-        TopMost = true;
-        ShowInTaskbar = false;
-        StartPosition = FormStartPosition.Manual;
-        Size = new Size(220, 44);
-        BackColor = Color.FromArgb(40, 40, 40);
-        DoubleBuffered = true;
-
-        var statusLabel = new Label
-        {
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
-            ForeColor = Color.White,
-            BackColor = Color.Transparent,
-            Cursor = Cursors.SizeAll
-        };
-        statusLabel.MouseDown += OnMouseDown;
-        statusLabel.MouseMove += OnMouseMove;
-        statusLabel.MouseUp += OnMouseUp;
-        Controls.Add(statusLabel);
-
-        MouseDown += OnMouseDown;
-        MouseMove += OnMouseMove;
-        MouseUp += OnMouseUp;
-        
-        return statusLabel;
-    }
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var cp = base.CreateParams;
-            cp.ExStyle |= 0x00000008;
-            return cp;
-        }
-    }
-
-    private ContextMenuStrip SetupContextMenu()
-    {
-        var contextMenu = new ContextMenuStrip
-        {
-            BackColor = Color.FromArgb(50, 50, 50),
-            ForeColor = Color.White
-        };
-
-        var settingsItem = new ToolStripMenuItem("Configurar tecla...")
-        {
-            ForeColor = Color.White,
-            BackColor = Color.FromArgb(50, 50, 50)
-        };
-        settingsItem.Click += (_, _) => ShowSettingsDialog();
-
-        var apiKeyItem = new ToolStripMenuItem("Configurar API key...")
-        {
-            ForeColor = Color.White,
-            BackColor = Color.FromArgb(50, 50, 50)
-        };
-        apiKeyItem.Click += (_, _) => ShowApiKeyDialog();
-
-        var separator = new ToolStripSeparator { BackColor = Color.FromArgb(60, 60, 60) };
-
-        var exitItem = new ToolStripMenuItem("Salir")
-        {
-            ForeColor = Color.White,
-            BackColor = Color.FromArgb(50, 50, 50)
-        };
-        exitItem.Click += (_, _) => Application.Exit();
-
-        contextMenu.Items.AddRange(new ToolStripItem[] { settingsItem, apiKeyItem, separator, exitItem });
-        return contextMenu;
-    }
-
     private void RestorePosition()
     {
         var settings = _settingsService.Settings;
         Location = new Point(settings.WidgetPosX, settings.WidgetPosY);
-        
+
         var screen = Screen.FromPoint(Location);
         if (!screen.WorkingArea.Contains(Bounds))
         {
@@ -173,31 +294,34 @@ public sealed class MainWidgetForm : Form
         _settingsService.UpdateWidgetPosition(Location.X, Location.Y);
     }
 
-    private void OnMouseDown(object? sender, MouseEventArgs e)
+    protected override void OnMouseDown(MouseEventArgs e)
     {
         if (e.Button == MouseButtons.Left)
         {
             _isDragging = true;
             _dragStart = e.Location;
         }
+        base.OnMouseDown(e);
     }
 
-    private void OnMouseMove(object? sender, MouseEventArgs e)
+    protected override void OnMouseMove(MouseEventArgs e)
     {
         if (_isDragging)
         {
             var delta = Point.Subtract(e.Location, new Size(_dragStart));
             Location = Point.Add(Location, new Size(delta));
         }
+        base.OnMouseMove(e);
     }
 
-    private void OnMouseUp(object? sender, MouseEventArgs e)
+    protected override void OnMouseUp(MouseEventArgs e)
     {
         if (e.Button == MouseButtons.Left && _isDragging)
         {
             _isDragging = false;
             SavePosition();
         }
+        base.OnMouseUp(e);
     }
 
     private void OnHotKeyPressed()
@@ -215,9 +339,9 @@ public sealed class MainWidgetForm : Form
     {
         if (_currentState == AppState.Idle)
         {
-            if (string.IsNullOrWhiteSpace(_settingsService.Settings.ApiKey))
+            if (!_settingsService.Settings.HasAnyKey)
             {
-                ShowError("API key not configured. Right-click the widget and select 'Configure API key' to set your Groq API key.");
+                ShowError("No hay API keys configuradas. Click derecho → 'Configurar API Keys...'");
                 return;
             }
 
@@ -225,6 +349,8 @@ public sealed class MainWidgetForm : Form
             {
                 _audioCapture.StartRecording();
                 _currentState = AppState.Listening;
+                _pulseAlpha = 180;
+                _pulseDirection = 1;
                 UpdateUI();
             }
             catch (Exception ex)
@@ -237,6 +363,8 @@ public sealed class MainWidgetForm : Form
         else if (_currentState == AppState.Listening)
         {
             _currentState = AppState.Transcribing;
+            _animFrame = 0;
+            _animTick = 0;
             UpdateUI();
 
             try
@@ -286,22 +414,7 @@ public sealed class MainWidgetForm : Form
 
     private void UpdateUI()
     {
-        _statusLabel.Text = _currentState switch
-        {
-            AppState.Idle => "Inactivo",
-            AppState.Listening => "Escuchando...",
-            AppState.Transcribing => "Transcribiendo...",
-            _ => "Inactivo"
-        };
-
-        _statusLabel.BackColor = _currentState switch
-        {
-            AppState.Idle => Color.FromArgb(40, 40, 40),
-            AppState.Listening => Color.FromArgb(180, 40, 40),
-            AppState.Transcribing => Color.FromArgb(180, 140, 40),
-            _ => Color.FromArgb(40, 40, 40)
-        };
-        BackColor = _statusLabel.BackColor;
+        Invalidate();
     }
 
     private void ShowSettingsDialog()
@@ -321,44 +434,86 @@ public sealed class MainWidgetForm : Form
 
     private void ShowApiKeyDialog()
     {
-        var currentKey = _settingsService.Settings.ApiKey;
-        var maskedKey = string.IsNullOrEmpty(currentKey) ? "(no configurada)" : new string('*', Math.Min(currentKey.Length, 8));
+        var s = _settingsService.Settings;
+        var (used1, total1, used2, total2) = _apiKeyManager.GetUsageStatus();
+
+        var masked1 = string.IsNullOrEmpty(s.ApiKey1) ? "(no configurada)" : $"****{s.ApiKey1[^4..]}";
+        var masked2 = string.IsNullOrEmpty(s.ApiKey2) ? "(no configurada)" : $"****{s.ApiKey2[^4..]}";
 
         using var inputForm = new Form
         {
-            Text = "Groq API Key",
-            Size = new Size(400, 180),
+            Text = "Groq API Keys (Dual Mode)",
+            Size = new Size(460, 280),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
             MinimizeBox = false,
-            BackColor = Color.FromArgb(50, 50, 50)
+            BackColor = Color.FromArgb(30, 30, 30)
         };
 
-        var label = new Label
+        var lblTitle = new Label
         {
-            Text = $"API Key actual: {maskedKey}\n\nObtén tu API key gratis en:\nhttps://console.groq.com",
+            Text = "Obtén keys gratis en: https://console.groq.com",
             AutoSize = true,
-            Location = new Point(15, 15),
+            Location = new Point(15, 10),
+            ForeColor = Color.FromArgb(120, 180, 255),
+            BackColor = Color.Transparent
+        };
+
+        var lblKey1Status = new Label
+        {
+            Text = $"Key 1: {masked1}  |  Usados: {used1}/{total1}",
+            AutoSize = true,
+            Location = new Point(15, 38),
             ForeColor = Color.White,
             BackColor = Color.Transparent
         };
 
-        var textBox = new TextBox
+        var txtKey1 = new TextBox
         {
-            Location = new Point(15, 90),
-            Width = 350,
+            Location = new Point(15, 60),
+            Width = 415,
             UseSystemPasswordChar = true,
-            BackColor = Color.FromArgb(40, 40, 40),
+            BackColor = Color.FromArgb(45, 45, 48),
             ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.FixedSingle,
+            Text = s.ApiKey1
+        };
+
+        var lblKey2Status = new Label
+        {
+            Text = $"Key 2: {masked2}  |  Usados: {used2}/{total2}",
+            AutoSize = true,
+            Location = new Point(15, 90),
+            ForeColor = Color.White,
+            BackColor = Color.Transparent
+        };
+
+        var txtKey2 = new TextBox
+        {
+            Location = new Point(15, 112),
+            Width = 415,
+            UseSystemPasswordChar = true,
+            BackColor = Color.FromArgb(45, 45, 48),
+            ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            Text = s.ApiKey2
+        };
+
+        var lblInfo = new Label
+        {
+            Text = "Las keys se guardan automáticamente.\nRotación automática al llegar a 19 req/min por key.",
+            AutoSize = true,
+            Location = new Point(15, 145),
+            ForeColor = Color.FromArgb(160, 160, 160),
+            BackColor = Color.Transparent
         };
 
         var okButton = new Button
         {
             Text = "Guardar",
-            Location = new Point(200, 120),
-            Width = 80,
+            Location = new Point(250, 210),
+            Width = 90,
             BackColor = Color.FromArgb(70, 130, 180),
             ForeColor = Color.White,
             DialogResult = DialogResult.OK
@@ -367,20 +522,26 @@ public sealed class MainWidgetForm : Form
         var cancelButton = new Button
         {
             Text = "Cancelar",
-            Location = new Point(285, 120),
-            Width = 80,
-            BackColor = Color.FromArgb(80, 80, 80),
+            Location = new Point(345, 210),
+            Width = 90,
+            BackColor = Color.FromArgb(60, 60, 60),
             ForeColor = Color.White,
             DialogResult = DialogResult.Cancel
         };
 
-        inputForm.Controls.AddRange(new Control[] { label, textBox, okButton, cancelButton });
+        inputForm.Controls.AddRange(new Control[]
+        {
+            lblTitle, lblKey1Status, txtKey1,
+            lblKey2Status, txtKey2, lblInfo,
+            okButton, cancelButton
+        });
         inputForm.AcceptButton = okButton;
         inputForm.CancelButton = cancelButton;
 
-        if (inputForm.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(textBox.Text))
+        if (inputForm.ShowDialog(this) == DialogResult.OK)
         {
-            _settingsService.UpdateApiKey(textBox.Text.Trim());
+            _settingsService.UpdateApiKey1(txtKey1.Text.Trim());
+            _settingsService.UpdateApiKey2(txtKey2.Text.Trim());
         }
     }
 
@@ -388,6 +549,8 @@ public sealed class MainWidgetForm : Form
     {
         _topMostTimer.Stop();
         _topMostTimer.Dispose();
+        _animationTimer.Stop();
+        _animationTimer.Dispose();
         _audioCapture.AudioChunkCaptured -= OnAudioChunkCaptured;
         Deactivate -= OnDeactivate;
         if (_hotKeyService != null)
@@ -396,5 +559,54 @@ public sealed class MainWidgetForm : Form
         }
         SavePosition();
         base.OnFormClosing(e);
+    }
+
+    private static GraphicsPath GetRoundedRectPath(Rectangle rect, int radius)
+    {
+        var path = new GraphicsPath();
+        var d = radius * 2;
+        path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+        path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+        path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+        path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+}
+
+internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
+{
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+    {
+        using var brush = new SolidBrush(e.Item.Selected ? Color.FromArgb(60, 60, 60) : Color.FromArgb(30, 30, 30));
+        e.Graphics.FillRectangle(brush, new Rectangle(Point.Empty, e.Item.Size));
+    }
+
+    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+    {
+        using var brush = new SolidBrush(Color.FromArgb(30, 30, 30));
+        e.Graphics.FillRectangle(brush, e.AffectedBounds);
+    }
+
+    protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+    {
+        using var pen = new Pen(Color.FromArgb(50, 50, 50));
+        var y = e.Item.Height / 2;
+        e.Graphics.DrawLine(pen, 0, y, e.Item.Width, y);
+    }
+}
+
+internal static class GraphicsExtensions
+{
+    public static void FillRoundedRect(this Graphics g, Brush brush, int x, int y, int w, int h, int r)
+    {
+        using var path = new GraphicsPath();
+        var d = r * 2;
+        path.AddArc(x, y, d, d, 180, 90);
+        path.AddArc(x + w - d, y, d, d, 270, 90);
+        path.AddArc(x + w - d, y + h - d, d, d, 0, 90);
+        path.AddArc(x, y + h - d, d, d, 90, 90);
+        path.CloseFigure();
+        g.FillPath(brush, path);
     }
 }
