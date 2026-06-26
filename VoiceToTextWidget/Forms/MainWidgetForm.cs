@@ -226,7 +226,7 @@ public sealed class MainWidgetForm : Form
             Renderer = new DarkMenuRenderer()
         };
 
-        var settingsItem = new ToolStripMenuItem("Configurar tecla...")
+        var settingsItem = new ToolStripMenuItem("Configuracion...")
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30)

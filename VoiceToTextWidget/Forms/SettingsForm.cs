@@ -41,16 +41,17 @@ public sealed class SettingsForm : Form
 
     private void InitializeComponent()
     {
-        Text = "Configurar atajo";
+        Text = "Configuracion";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Size = new Size(380, 250);
+        Size = new Size(480, 400);
         BackColor = Color.FromArgb(45, 45, 48);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 9);
         KeyPreview = true;
+        AutoScroll = true;
 
         var mainPanel = new TableLayoutPanel
         {
