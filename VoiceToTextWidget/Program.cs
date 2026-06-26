@@ -19,7 +19,9 @@ internal static class Program
 
         RuntimeOptions.RuntimeLibraryOrder = new List<RuntimeLibrary>
         {
-            RuntimeLibrary.Cpu
+            RuntimeLibrary.Cuda,
+            RuntimeLibrary.Cpu,
+            RuntimeLibrary.CpuNoAvx
         };
 
         LogProvider.AddLogger((level, message) =>
@@ -33,13 +35,15 @@ internal static class Program
         var apiKeyManager = new ApiKeyManager(settingsService);
 
         using var audioCapture = new AudioCaptureService();
-        using var speechRecognition = CreateSpeechService(settingsService, apiKeyManager);
+        using var groqService = new GroqApiSpeechService(settingsService, apiKeyManager);
+        using var localService = new WhisperLocalSpeechService(settingsService);
         using var textInjection = new TextInjectionService();
 
         using var widgetForm = new MainWidgetForm(
             settingsService,
             audioCapture,
-            speechRecognition,
+            groqService,
+            localService,
             textInjection,
             apiKeyManager);
 
@@ -62,13 +66,5 @@ internal static class Program
         hotKeyService.Dispose();
     }
 
-    private static ISpeechRecognitionService CreateSpeechService(
-        SettingsService settings, ApiKeyManager apiKeyManager)
-    {
-        return settings.Settings.ActiveProvider switch
-        {
-            SttProvider.LocalWhisper => new WhisperLocalSpeechService(settings),
-            _ => new GroqApiSpeechService(settings, apiKeyManager)
-        };
-    }
+
 }

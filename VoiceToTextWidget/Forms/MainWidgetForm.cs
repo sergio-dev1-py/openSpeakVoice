@@ -12,7 +12,9 @@ public sealed class MainWidgetForm : Form
 {
     private readonly SettingsService _settingsService;
     private readonly AudioCaptureService _audioCapture;
-    private readonly ISpeechRecognitionService _speechRecognition;
+    private readonly GroqApiSpeechService _groqService;
+    private readonly WhisperLocalSpeechService _localService;
+    private ISpeechRecognitionService _activeSpeechService;
     private readonly TextInjectionService _textInjection;
     private readonly ApiKeyManager _apiKeyManager;
 
@@ -46,15 +48,21 @@ public sealed class MainWidgetForm : Form
     public MainWidgetForm(
         SettingsService settingsService,
         AudioCaptureService audioCapture,
-        ISpeechRecognitionService speechRecognition,
+        GroqApiSpeechService groqService,
+        WhisperLocalSpeechService localService,
         TextInjectionService textInjection,
         ApiKeyManager apiKeyManager)
     {
         _settingsService = settingsService;
         _audioCapture = audioCapture;
-        _speechRecognition = speechRecognition;
+        _groqService = groqService;
+        _localService = localService;
         _textInjection = textInjection;
         _apiKeyManager = apiKeyManager;
+
+        _activeSpeechService = _settingsService.Settings.ActiveProvider == SttProvider.LocalWhisper
+            ? _localService
+            : _groqService;
 
         _contextMenu = SetupContextMenu();
         ContextMenuStrip = _contextMenu;
@@ -353,6 +361,7 @@ public sealed class MainWidgetForm : Form
 
         var providerMenu = new ToolStripMenuItem("Proveedor de voz")
         {
+            Name = "providerMenu",
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30)
         };
@@ -531,7 +540,7 @@ public sealed class MainWidgetForm : Form
                     return;
                 }
 
-                var text = await _speechRecognition.FinishSessionAsync(audioData);
+                var text = await _activeSpeechService.FinishSessionAsync(audioData);
                 if (string.IsNullOrWhiteSpace(text))
                 {
                     ShowError("No se reconocio texto. Prueba hablando mas claro o mas fuerte.");
@@ -711,6 +720,9 @@ public sealed class MainWidgetForm : Form
     private void SwitchProvider(SttProvider provider)
     {
         _settingsService.UpdateProvider(provider);
+        _activeSpeechService = provider == SttProvider.LocalWhisper
+            ? _localService
+            : _groqService;
         UpdateProviderMenuChecks();
 
         if (provider == SttProvider.LocalWhisper)
@@ -723,10 +735,7 @@ public sealed class MainWidgetForm : Form
     {
         try
         {
-            if (_speechRecognition is WhisperLocalSpeechService whisperService)
-            {
-                await whisperService.PreloadAsync();
-            }
+            await _localService.PreloadAsync();
         }
         catch (Exception ex)
         {
@@ -768,12 +777,8 @@ public sealed class MainWidgetForm : Form
             if (modelForm.ShowDialog(this) == DialogResult.OK)
             {
                 _settingsService.UpdateLocalModel(modelForm.SelectedModelName, modelForm.UseGpu);
-
-                if (_speechRecognition is WhisperLocalSpeechService whisperService)
-                {
-                    whisperService.ResetModel();
-                    _ = PreloadWhisperModelAsync();
-                }
+                _localService.ResetModel();
+                _ = PreloadWhisperModelAsync();
             }
         }
         finally
@@ -799,6 +804,8 @@ public sealed class MainWidgetForm : Form
             _hotKeyService.HotKeyPressed -= OnHotKeyPressed;
         }
         _trayIcon?.Dispose();
+        _groqService.Dispose();
+        _localService.Dispose();
         SavePosition();
         base.OnFormClosing(e);
     }

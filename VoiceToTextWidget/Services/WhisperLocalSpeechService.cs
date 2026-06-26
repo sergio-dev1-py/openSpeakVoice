@@ -45,7 +45,7 @@ public sealed class WhisperLocalSpeechService : ISpeechRecognitionService
             {
                 _whisperFactory = WhisperFactory.FromPath(modelPath, new WhisperFactoryOptions
                 {
-                    UseGpu = false
+                    UseGpu = _settings.Settings.UseGpuAcceleration
                 });
             }
             catch (WhisperModelLoadException wex)
