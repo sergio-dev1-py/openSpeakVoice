@@ -26,6 +26,8 @@ public sealed class MainWidgetForm : Form
     private Point _dragStart;
     private NotifyIcon? _trayIcon;
     private bool _isHidden;
+    private ToolStripMenuItem? _hideMenuItem;
+    private ToolStripMenuItem? _exitMenuItem;
 
     private int _pulseAlpha = 180;
     private int _pulseDirection = 1;
@@ -380,21 +382,22 @@ public sealed class MainWidgetForm : Form
 
         providerMenu.DropDownItems.AddRange(new ToolStripItem[] { groqItem, localItem, modelConfigItem });
 
-        var hideItem = new ToolStripMenuItem("Ocultar")
+        _hideMenuItem = new ToolStripMenuItem("Ocultar")
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30),
+            Enabled = false
+        };
+        _hideMenuItem.Click += (_, _) => HideWidget();
+
+        _exitMenuItem = new ToolStripMenuItem("Salir")
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30)
         };
-        hideItem.Click += (_, _) => HideWidget();
+        _exitMenuItem.Click += (_, _) => Application.Exit();
 
-        var exitItem = new ToolStripMenuItem("Salir")
-        {
-            ForeColor = Color.White,
-            BackColor = Color.FromArgb(30, 30, 30)
-        };
-        exitItem.Click += (_, _) => Application.Exit();
-
-        contextMenu.Items.AddRange(new ToolStripItem[] { settingsItem, apiKeyItem, providerMenu, hideItem, exitItem });
+        contextMenu.Items.AddRange(new ToolStripItem[] { settingsItem, apiKeyItem, providerMenu, _hideMenuItem, _exitMenuItem });
         return contextMenu;
     }
 
@@ -566,6 +569,10 @@ public sealed class MainWidgetForm : Form
 
     private void UpdateUI()
     {
+        if (_hideMenuItem != null)
+            _hideMenuItem.Enabled = _currentState == AppState.Idle;
+        if (_exitMenuItem != null)
+            _exitMenuItem.Enabled = _currentState == AppState.Idle;
         Invalidate();
     }
 
@@ -777,6 +784,10 @@ public sealed class MainWidgetForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        if (_currentState == AppState.Listening)
+        {
+            _ = _audioCapture.StopRecordingAsync();
+        }
         _topMostTimer.Stop();
         _topMostTimer.Dispose();
         _animationTimer.Stop();
