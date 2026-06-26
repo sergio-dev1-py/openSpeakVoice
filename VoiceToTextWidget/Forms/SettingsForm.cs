@@ -44,6 +44,7 @@ public sealed class SettingsForm : Form
         _colorPreview = CreateColorPreview();
         _colorHexLabel = CreateColorHexLabel();
         _multicolorCheck = CreateMulticolorCheckBox();
+        _multicolorCheck.Checked = currentSettings.MulticolorBorder;
         _cancelButton = CreateCancelButton();
         _saveButton = CreateSaveButton();
 
@@ -271,12 +272,9 @@ public sealed class SettingsForm : Form
             AutoSize = true,
             ForeColor = Color.White,
             Font = new Font("Segoe UI", 9),
-            Margin = new Padding(0, 0, 0, 0),
-            FlatStyle = FlatStyle.Flat,
+            Margin = new Padding(0, 5, 0, 0),
             Checked = false
         };
-        checkBox.FlatAppearance.CheckedBackColor = Color.FromArgb(0, 120, 215);
-        checkBox.FlatAppearance.BorderColor = Color.FromArgb(100, 100, 105);
         return checkBox;
     }
 

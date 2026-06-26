@@ -29,8 +29,9 @@ public sealed class MainWidgetForm : Form
     private int _pulseDirection = 1;
     private int _animFrame;
     private int _animTick;
+    private float _colorHue = 0f;
 
-    private const int WidgetWidth = 160;
+    private const int WidgetWidth = 175;
     private const int WidgetHeight = 38;
     private const int CornerRadius = 18;
 
@@ -123,57 +124,54 @@ public sealed class MainWidgetForm : Form
         Region = new Region(outerPath);
 
         DrawMicIcon(g, innerRect);
-
         DrawStatusText(g, innerRect);
     }
 
     private Color GetAnimatedBackground()
     {
-        return _currentState switch
-        {
-            AppState.Listening => Color.FromArgb(_pulseAlpha, 180, 40, 40),
-            AppState.Transcribing => ColorTranscribing,
-            _ => ColorIdle
-        };
+        return ColorIdle;
     }
 
     private Color GetBorderColor()
     {
+        var userColor = Color.White;
+        try { userColor = ColorTranslator.FromHtml(_settingsService.Settings.BorderColor); }
+        catch { }
+
         if (_settingsService.Settings.MulticolorBorder)
         {
-            return _currentState switch
-            {
-                AppState.Listening => Color.FromArgb(_pulseAlpha, 255, 80, 80),
-                AppState.Transcribing => Color.FromArgb(255, 200, 60),
-                _ => Color.White
-            };
+            return HslToRgb(_colorHue, 1.0f, 0.55f);
         }
 
-        try
-        {
-            return ColorTranslator.FromHtml(_settingsService.Settings.BorderColor);
-        }
-        catch
-        {
-            return Color.White;
-        }
+        return userColor;
+    }
+
+    private static Color HslToRgb(float h, float s, float l)
+    {
+        h = h % 360f;
+        float c = (1f - Math.Abs(2f * l - 1f)) * s;
+        float x = c * (1f - Math.Abs(h / 60f % 2f - 1f));
+        float m = l - c / 2f;
+
+        float r, g, b;
+        if (h < 60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+
+        return Color.FromArgb(
+            Math.Clamp((int)((r + m) * 255), 0, 255),
+            Math.Clamp((int)((g + m) * 255), 0, 255),
+            Math.Clamp((int)((b + m) * 255), 0, 255));
     }
 
     private void DrawMicIcon(Graphics g, Rectangle bounds)
     {
-        Color micColor;
-        switch (_currentState)
-        {
-            case AppState.Listening:
-                micColor = Color.FromArgb(255, 255, 255);
-                break;
-            case AppState.Transcribing:
-                micColor = Color.FromArgb(200, 220, 255);
-                break;
-            default:
-                micColor = Color.FromArgb(140, 140, 140);
-                break;
-        }
+        Color micColor = _currentState != AppState.Idle
+            ? GetBorderColor()
+            : Color.FromArgb(140, 140, 140);
 
         int cx = bounds.Left + 22;
         int cy = bounds.Top + bounds.Height / 2;
@@ -224,6 +222,13 @@ public sealed class MainWidgetForm : Form
 
     private void OnAnimationTick(object? sender, EventArgs e)
     {
+        if (_settingsService.Settings.MulticolorBorder)
+        {
+            _colorHue += 1.5f;
+            if (_colorHue >= 360f) _colorHue -= 360f;
+            Invalidate();
+        }
+
         if (_currentState == AppState.Listening)
         {
             _pulseAlpha += 8 * _pulseDirection;
@@ -503,7 +508,7 @@ public sealed class MainWidgetForm : Form
         using var inputForm = new Form
         {
             Text = "Groq API Keys (Dual Mode)",
-            Size = new Size(460, 280),
+            Size = new Size(460, 340),
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
@@ -574,6 +579,7 @@ public sealed class MainWidgetForm : Form
             Text = "Guardar",
             Location = new Point(250, 210),
             Width = 90,
+            Height = 40,
             BackColor = Color.FromArgb(70, 130, 180),
             ForeColor = Color.White,
             DialogResult = DialogResult.OK
@@ -584,6 +590,7 @@ public sealed class MainWidgetForm : Form
             Text = "Cancelar",
             Location = new Point(345, 210),
             Width = 90,
+            Height = 40,
             BackColor = Color.FromArgb(60, 60, 60),
             ForeColor = Color.White,
             DialogResult = DialogResult.Cancel
