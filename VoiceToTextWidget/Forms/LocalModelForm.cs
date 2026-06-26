@@ -24,7 +24,7 @@ public sealed class LocalModelForm : Form
         ("base", "Base (~142 MB)", 142L * 1024 * 1024),
         ("small", "Small (~466 MB)", 466L * 1024 * 1024),
         ("medium", "Medium (~1.5 GB)", 1500L * 1024 * 1024),
-        ("large-v3-turbo", "Large V3 Turbo (~1.5 GB)", 1500L * 1024 * 1024),
+        ("large-v3", "Large V3 (~3.1 GB)", 3100L * 1024 * 1024),
     };
 
     public string SelectedModelName => Models[_modelCombo.SelectedIndex].Name;

@@ -104,6 +104,7 @@ public sealed class WhisperLocalSpeechService : ISpeechRecognitionService
             using var processor = _whisperFactory.CreateBuilder()
                 .WithLanguage(language)
                 .WithTokenTimestamps()
+                .WithTemperature(0.0f)
                 .Build();
 
             using var wavStream = ConvertPcmToWav(audioData);
@@ -140,7 +141,6 @@ public sealed class WhisperLocalSpeechService : ISpeechRecognitionService
             "small" => GgmlType.Small,
             "medium" => GgmlType.Medium,
             "large-v3" => GgmlType.LargeV3,
-            "large-v3-turbo" => GgmlType.LargeV3Turbo,
             _ => GgmlType.Small
         };
 
