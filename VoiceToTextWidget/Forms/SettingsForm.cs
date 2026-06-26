@@ -13,18 +13,26 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _altCheck;
     private readonly CheckBox _shiftCheck;
     private readonly CheckBox _winCheck;
+    private readonly Button _colorButton;
+    private readonly Label _colorPreview;
+    private readonly Label _colorHexLabel;
+    private readonly CheckBox _multicolorCheck;
     private readonly Button _saveButton;
     private readonly Button _cancelButton;
 
     private bool _capturingKey;
+    private Color _selectedBorderColor;
 
     public Keys HotKeyValue { get; private set; }
     public HotKeyModifierKeys SelectedModifiers { get; private set; }
+    public string BorderColorHex => ColorTranslator.ToHtml(_selectedBorderColor);
+    public bool MulticolorBorder => _multicolorCheck.Checked;
 
     public SettingsForm(AppSettings currentSettings)
     {
         HotKeyValue = currentSettings.HotKey;
         SelectedModifiers = currentSettings.Modifiers;
+        _selectedBorderColor = ColorTranslator.FromHtml(currentSettings.BorderColor);
 
         _hotKeyTextBox = CreateHotKeyTextBox();
         _captureButton = CreateCaptureButton();
@@ -32,6 +40,10 @@ public sealed class SettingsForm : Form
         _altCheck = CreateModifierCheckBox("Alt", HotKeyModifierKeys.Alt);
         _shiftCheck = CreateModifierCheckBox("Shift", HotKeyModifierKeys.Shift);
         _winCheck = CreateModifierCheckBox("Win", HotKeyModifierKeys.Win);
+        _colorButton = CreateColorButton();
+        _colorPreview = CreateColorPreview();
+        _colorHexLabel = CreateColorHexLabel();
+        _multicolorCheck = CreateMulticolorCheckBox();
         _cancelButton = CreateCancelButton();
         _saveButton = CreateSaveButton();
 
@@ -46,7 +58,7 @@ public sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Size = new Size(480, 400);
+        Size = new Size(480, 500);
         BackColor = Color.FromArgb(45, 45, 48);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 9);
@@ -58,9 +70,16 @@ public sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(20),
             ColumnCount = 1,
-            RowCount = 5,
-            BackColor = Color.Transparent
+            RowCount = 10,
+            BackColor = Color.Transparent,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink
         };
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -99,6 +118,39 @@ public sealed class SettingsForm : Form
             Margin = new Padding(0, 0, 0, 15)
         };
 
+        var lblAppearance = new Label
+        {
+            Text = "Apariencia del widget",
+            AutoSize = true,
+            ForeColor = Color.FromArgb(120, 180, 255),
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+            Margin = new Padding(0, 10, 0, 5)
+        };
+
+        var lblBorderColor = new Label
+        {
+            Text = "Color del borde:",
+            AutoSize = true,
+            ForeColor = Color.White,
+            Margin = new Padding(0, 0, 0, 5)
+        };
+
+        var colorPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 10)
+        };
+
+        var lblMulticolor = new Label
+        {
+            Text = "Multicolor (cambia con el estado del widget)",
+            AutoSize = true,
+            ForeColor = Color.FromArgb(160, 160, 160),
+            Margin = new Padding(25, 5, 0, 15)
+        };
+
         var buttonPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,
@@ -112,6 +164,10 @@ public sealed class SettingsForm : Form
 
         modifiersPanel.Controls.AddRange(new Control[] { _ctrlCheck, _altCheck, _shiftCheck, _winCheck });
 
+        colorPanel.Controls.Add(_colorButton);
+        colorPanel.Controls.Add(_colorPreview);
+        colorPanel.Controls.Add(_colorHexLabel);
+
         buttonPanel.Controls.Add(_cancelButton);
         buttonPanel.Controls.Add(_saveButton);
 
@@ -119,7 +175,12 @@ public sealed class SettingsForm : Form
         mainPanel.Controls.Add(hotKeyPanel, 0, 1);
         mainPanel.Controls.Add(lblModifiers, 0, 2);
         mainPanel.Controls.Add(modifiersPanel, 0, 3);
-        mainPanel.Controls.Add(buttonPanel, 0, 4);
+        mainPanel.Controls.Add(lblAppearance, 0, 4);
+        mainPanel.Controls.Add(lblBorderColor, 0, 5);
+        mainPanel.Controls.Add(colorPanel, 0, 6);
+        mainPanel.Controls.Add(_multicolorCheck, 0, 7);
+        mainPanel.Controls.Add(lblMulticolor, 0, 8);
+        mainPanel.Controls.Add(buttonPanel, 0, 9);
 
         Controls.Add(mainPanel);
         AcceptButton = _saveButton;
@@ -158,6 +219,65 @@ public sealed class SettingsForm : Form
         button.FlatAppearance.BorderColor = Color.FromArgb(0, 100, 190);
         button.Click += (_, _) => BeginCapture();
         return button;
+    }
+
+    private Button CreateColorButton()
+    {
+        var button = new Button
+        {
+            Text = "Seleccionar",
+            Size = new Size(100, 28),
+            BackColor = Color.FromArgb(60, 60, 65),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Margin = new Padding(0, 0, 10, 0)
+        };
+        button.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 85);
+        button.Click += OnColorButtonClick;
+        return button;
+    }
+
+    private Label CreateColorPreview()
+    {
+        var label = new Label
+        {
+            Size = new Size(24, 24),
+            BackColor = _selectedBorderColor,
+            BorderStyle = BorderStyle.FixedSingle,
+            Margin = new Padding(0, 2, 8, 0)
+        };
+        return label;
+    }
+
+    private Label CreateColorHexLabel()
+    {
+        var label = new Label
+        {
+            Text = ColorTranslator.ToHtml(_selectedBorderColor),
+            AutoSize = true,
+            ForeColor = Color.FromArgb(160, 160, 160),
+            Font = new Font("Segoe UI", 9),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(0, 0, 0, 0)
+        };
+        return label;
+    }
+
+    private CheckBox CreateMulticolorCheckBox()
+    {
+        var checkBox = new CheckBox
+        {
+            Text = "Multicolor (borde cambia con el estado del widget)",
+            AutoSize = true,
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI", 9),
+            Margin = new Padding(0, 0, 0, 0),
+            FlatStyle = FlatStyle.Flat,
+            Checked = false
+        };
+        checkBox.FlatAppearance.CheckedBackColor = Color.FromArgb(0, 120, 215);
+        checkBox.FlatAppearance.BorderColor = Color.FromArgb(100, 100, 105);
+        return checkBox;
     }
 
     private CheckBox CreateModifierCheckBox(string text, HotKeyModifierKeys modifier)
@@ -224,6 +344,35 @@ public sealed class SettingsForm : Form
         _winCheck.Checked = (SelectedModifiers & HotKeyModifierKeys.Win) != 0;
 
         RefreshHotKeyDisplay();
+        RefreshColorDisplay();
+    }
+
+    private void OnColorButtonClick(object? sender, EventArgs e)
+    {
+        using var colorDialog = new ColorDialog
+        {
+            Color = _selectedBorderColor,
+            FullOpen = true,
+            AnyColor = true
+        };
+
+        if (colorDialog.ShowDialog(this) == DialogResult.OK)
+        {
+            _selectedBorderColor = colorDialog.Color;
+            RefreshColorDisplay();
+        }
+    }
+
+    private void RefreshColorDisplay()
+    {
+        _colorPreview.BackColor = _selectedBorderColor;
+        _colorHexLabel.Text = ColorTranslator.ToHtml(_selectedBorderColor);
+    }
+
+    private static Color GetContrastColor(Color bg)
+    {
+        double luminance = (0.299 * bg.R + 0.587 * bg.G + 0.114 * bg.B) / 255;
+        return luminance > 0.5 ? Color.Black : Color.White;
     }
 
     private void BeginCapture()

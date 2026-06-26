@@ -32,6 +32,10 @@ public class AppSettings
 
     public string WhisperPrompt { get; set; } = string.Empty;
 
+    public string BorderColor { get; set; } = "#FFFFFF";
+
+    public bool MulticolorBorder { get; set; } = false;
+
     public int WidgetPosX { get; set; } = 100;
     public int WidgetPosY { get; set; } = 100;
 

@@ -96,4 +96,11 @@ public sealed class SettingsService
         _settings.WhisperPrompt = prompt;
         Save();
     }
+
+    public void UpdateAppearance(string borderColor, bool multicolor)
+    {
+        _settings.BorderColor = borderColor;
+        _settings.MulticolorBorder = multicolor;
+        Save();
+    }
 }

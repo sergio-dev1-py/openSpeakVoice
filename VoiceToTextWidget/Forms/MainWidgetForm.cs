@@ -107,20 +107,24 @@ public sealed class MainWidgetForm : Form
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
 
         var bgColor = GetAnimatedBackground();
-        var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+        var borderColor = GetBorderColor();
+        var bw = 5;
 
-        using var path = GetRoundedRectPath(rect, CornerRadius);
+        var outerRect = new Rectangle(0, 0, Width - 1, Height - 1);
+        using var outerPath = GetRoundedRectPath(outerRect, CornerRadius);
+        using var borderBrush = new SolidBrush(borderColor);
+        g.FillPath(borderBrush, outerPath);
+
+        var innerRect = new Rectangle(bw, bw, Width - 1 - bw * 2, Height - 1 - bw * 2);
+        using var innerPath = GetRoundedRectPath(innerRect, CornerRadius - bw);
         using var bgBrush = new SolidBrush(bgColor);
-        g.FillPath(bgBrush, path);
+        g.FillPath(bgBrush, innerPath);
 
-        using var borderPen = new Pen(Color.FromArgb(60, 60, 63), 1);
-        g.DrawPath(borderPen, path);
+        Region = new Region(outerPath);
 
-        Region = new Region(path);
+        DrawMicIcon(g, innerRect);
 
-        DrawMicIcon(g, rect);
-
-        DrawStatusText(g, rect);
+        DrawStatusText(g, innerRect);
     }
 
     private Color GetAnimatedBackground()
@@ -131,6 +135,28 @@ public sealed class MainWidgetForm : Form
             AppState.Transcribing => ColorTranscribing,
             _ => ColorIdle
         };
+    }
+
+    private Color GetBorderColor()
+    {
+        if (_settingsService.Settings.MulticolorBorder)
+        {
+            return _currentState switch
+            {
+                AppState.Listening => Color.FromArgb(_pulseAlpha, 255, 80, 80),
+                AppState.Transcribing => Color.FromArgb(255, 200, 60),
+                _ => Color.White
+            };
+        }
+
+        try
+        {
+            return ColorTranslator.FromHtml(_settingsService.Settings.BorderColor);
+        }
+        catch
+        {
+            return Color.White;
+        }
     }
 
     private void DrawMicIcon(Graphics g, Rectangle bounds)
@@ -455,6 +481,8 @@ public sealed class MainWidgetForm : Form
         if (settingsForm.ShowDialog(this) == DialogResult.OK)
         {
             _settingsService.UpdateHotKey(settingsForm.HotKeyValue, settingsForm.SelectedModifiers);
+            _settingsService.UpdateAppearance(settingsForm.BorderColorHex, settingsForm.MulticolorBorder);
+            Invalidate();
             _hotKeyService?.Reregister();
 
             if (_hotKeyService != null && !_hotKeyService.IsRegistered)
