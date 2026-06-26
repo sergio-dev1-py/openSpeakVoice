@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using Whisper.net;
 using Whisper.net.Ggml;
+using Whisper.net.LibraryLoader;
 
 namespace VoiceToTextWidget.Services;
 
@@ -34,14 +35,38 @@ public sealed class WhisperLocalSpeechService : ISpeechRecognitionService
                 await DownloadModelAsync(modelPath);
             }
 
-            Debug.WriteLine($"[Whisper] Loading model from {modelPath}");
-            _whisperFactory = WhisperFactory.FromPath(modelPath);
+            var modelSizeMB = new FileInfo(modelPath).Length / (1024L * 1024);
+            Debug.WriteLine($"[Whisper] Loading model: {modelPath} ({modelSizeMB} MB)");
+            Debug.WriteLine($"[Whisper] Runtime order: {string.Join(", ", RuntimeOptions.RuntimeLibraryOrder)}");
+            Debug.WriteLine($"[Whisper] Loaded library: {RuntimeOptions.LoadedLibrary}");
+            Debug.WriteLine($"[Whisper] UseGpu: {_settings.Settings.UseGpuAcceleration}");
+
+            try
+            {
+                _whisperFactory = WhisperFactory.FromPath(modelPath, new WhisperFactoryOptions
+                {
+                    UseGpu = false
+                });
+            }
+            catch (WhisperModelLoadException wex)
+            {
+                Debug.WriteLine($"[Whisper] WhisperModelLoadException: {wex.Message}");
+                if (wex.InnerException != null)
+                    Debug.WriteLine($"[Whisper] Inner: {wex.InnerException.GetType().Name}: {wex.InnerException.Message}");
+                if (wex.InnerException?.InnerException != null)
+                    Debug.WriteLine($"[Whisper] Inner2: {wex.InnerException.InnerException.GetType().Name}: {wex.InnerException.InnerException.Message}");
+                throw;
+            }
+
             _initialized = true;
             Debug.WriteLine("[Whisper] Model loaded successfully");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[Whisper] Failed to load model: {ex.Message}");
+            Debug.WriteLine($"[Whisper] FAILED: {ex.GetType().Name}: {ex.Message}");
+            Debug.WriteLine($"[Whisper] Stack trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+                Debug.WriteLine($"[Whisper] Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
             throw;
         }
     }
@@ -163,6 +188,14 @@ public sealed class WhisperLocalSpeechService : ISpeechRecognitionService
 
         wavStream.Seek(0, SeekOrigin.Begin);
         return wavStream;
+    }
+
+    public void ResetModel()
+    {
+        _whisperFactory?.Dispose();
+        _whisperFactory = null;
+        _initialized = false;
+        Debug.WriteLine("[Whisper] Model reset, will reload on next session");
     }
 
     public void Dispose()

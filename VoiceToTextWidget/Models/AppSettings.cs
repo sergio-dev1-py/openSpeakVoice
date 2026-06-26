@@ -30,6 +30,8 @@ public class AppSettings
 
     public bool UseGpuAcceleration { get; set; } = true;
 
+    public string WhisperPrompt { get; set; } = string.Empty;
+
     public int WidgetPosX { get; set; } = 100;
     public int WidgetPosY { get; set; } = 100;
 

@@ -13,6 +13,10 @@ public sealed class LocalModelForm : Form
     private readonly Label _modelSizeLabel;
     private readonly Button _downloadButton;
     private readonly Button _deleteButton;
+    private readonly Button _okButton;
+    private readonly Button _cancelButton;
+    private CancellationTokenSource? _downloadCts;
+    private bool _isDownloading;
 
     private static readonly (string Name, string DisplayName, long SizeBytes)[] Models = new (string, string, long)[]
     {
@@ -129,7 +133,7 @@ public sealed class LocalModelForm : Form
         };
         _deleteButton.Click += OnDeleteClick;
 
-        var okButton = new Button
+        _okButton = new Button
         {
             Text = "Guardar",
             Location = new Point(360, 290),
@@ -141,7 +145,7 @@ public sealed class LocalModelForm : Form
             FlatStyle = FlatStyle.Flat
         };
 
-        var cancelButton = new Button
+        _cancelButton = new Button
         {
             Text = "Cancelar",
             Location = new Point(260, 290),
@@ -157,11 +161,11 @@ public sealed class LocalModelForm : Form
         {
             lblTitle, lblModel, _modelCombo, _modelSizeLabel,
             _gpuCheckbox, _statusLabel, _downloadButton, _deleteButton,
-            okButton, cancelButton
+            _okButton, _cancelButton
         });
 
-        AcceptButton = okButton;
-        CancelButton = cancelButton;
+        AcceptButton = _okButton;
+        CancelButton = _cancelButton;
 
         UpdateModelStatus();
     }
@@ -202,10 +206,17 @@ public sealed class LocalModelForm : Form
         if (_modelCombo.SelectedIndex < 0) return;
 
         var model = Models[_modelCombo.SelectedIndex];
+        _isDownloading = true;
         _downloadButton.Enabled = false;
         _downloadButton.Text = "Descargando...";
+        _okButton.Enabled = false;
+        _cancelButton.Enabled = false;
+        _modelCombo.Enabled = false;
+        _deleteButton.Enabled = false;
         _statusLabel.Text = "Descargando modelo... esto puede tardar.";
         _statusLabel.ForeColor = Color.FromArgb(200, 180, 80);
+
+        _downloadCts = new CancellationTokenSource();
 
         try
         {
@@ -219,26 +230,51 @@ public sealed class LocalModelForm : Form
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
             var url = $"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model.Name}.bin";
 
-            using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, _downloadCts.Token);
             response.EnsureSuccessStatusCode();
 
-            using var stream = await response.Content.ReadAsStreamAsync();
+            using var stream = await response.Content.ReadAsStreamAsync(_downloadCts.Token);
             using var fileStream = File.Create(modelPath);
-            await stream.CopyToAsync(fileStream);
+            await stream.CopyToAsync(fileStream, _downloadCts.Token);
+
+            if (IsDisposed) return;
 
             _statusLabel.Text = "Descarga completada.";
             _statusLabel.ForeColor = Color.FromArgb(80, 200, 80);
             UpdateModelStatus();
         }
+        catch (OperationCanceledException)
+        {
+            if (!IsDisposed)
+            {
+                _statusLabel.Text = "Descarga cancelada.";
+                _statusLabel.ForeColor = Color.FromArgb(160, 160, 160);
+            }
+        }
         catch (Exception ex)
         {
             Debug.WriteLine($"[LocalModel] Download error: {ex.Message}");
-            _statusLabel.Text = $"Error: {ex.Message}";
-            _statusLabel.ForeColor = Color.FromArgb(200, 80, 80);
-            _downloadButton.Enabled = true;
+            if (!IsDisposed)
+            {
+                _statusLabel.Text = $"Error: {ex.Message}";
+                _statusLabel.ForeColor = Color.FromArgb(200, 80, 80);
+            }
         }
+        finally
+        {
+            _downloadCts?.Dispose();
+            _downloadCts = null;
+            _isDownloading = false;
 
-        _downloadButton.Text = "Descargar modelo";
+            if (!IsDisposed)
+            {
+                _downloadButton.Text = "Descargar modelo";
+                _okButton.Enabled = true;
+                _cancelButton.Enabled = true;
+                _modelCombo.Enabled = true;
+                UpdateModelStatus();
+            }
+        }
     }
 
     private void OnDeleteClick(object? sender, EventArgs e)
@@ -282,5 +318,14 @@ public sealed class LocalModelForm : Form
         if (bytes >= 1024L * 1024)
             return $"{bytes / (1024.0 * 1024):F0} MB";
         return $"{bytes / 1024.0:F0} KB";
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (_isDownloading)
+        {
+            _downloadCts?.Cancel();
+        }
+        base.OnFormClosing(e);
     }
 }

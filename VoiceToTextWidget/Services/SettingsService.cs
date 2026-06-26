@@ -90,4 +90,10 @@ public sealed class SettingsService
         _settings.UseGpuAcceleration = useGpu;
         Save();
     }
+
+    public void UpdateWhisperPrompt(string prompt)
+    {
+        _settings.WhisperPrompt = prompt;
+        Save();
+    }
 }

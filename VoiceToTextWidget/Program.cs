@@ -1,8 +1,11 @@
 using System;
+using System.Diagnostics;
 using System.Windows.Forms;
 using VoiceToTextWidget.Forms;
 using VoiceToTextWidget.Models;
 using VoiceToTextWidget.Services;
+using Whisper.net.LibraryLoader;
+using Whisper.net.Logger;
 
 namespace VoiceToTextWidget;
 
@@ -13,6 +16,18 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+
+        RuntimeOptions.RuntimeLibraryOrder = new List<RuntimeLibrary>
+        {
+            RuntimeLibrary.Cpu
+        };
+
+        LogProvider.AddLogger((level, message) =>
+        {
+            var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {message}";
+            Debug.WriteLine($"[Whisper.NET native] {logLine}");
+            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "whisper_debug.log"), logLine + Environment.NewLine); } catch { }
+        });
 
         var settingsService = new SettingsService();
         var apiKeyManager = new ApiKeyManager(settingsService);

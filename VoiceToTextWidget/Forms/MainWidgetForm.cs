@@ -637,6 +637,12 @@ public sealed class MainWidgetForm : Form
             if (modelForm.ShowDialog(this) == DialogResult.OK)
             {
                 _settingsService.UpdateLocalModel(modelForm.SelectedModelName, modelForm.UseGpu);
+
+                if (_speechRecognition is WhisperLocalSpeechService whisperService)
+                {
+                    whisperService.ResetModel();
+                    _ = PreloadWhisperModelAsync();
+                }
             }
         }
         finally
