@@ -24,6 +24,8 @@ public sealed class MainWidgetForm : Form
     private AppState _currentState = AppState.Idle;
     private bool _isDragging;
     private Point _dragStart;
+    private NotifyIcon? _trayIcon;
+    private bool _isHidden;
 
     private int _pulseAlpha = 180;
     private int _pulseDirection = 1;
@@ -57,6 +59,7 @@ public sealed class MainWidgetForm : Form
         _audioCapture.AudioChunkCaptured += OnAudioChunkCaptured;
 
         InitializeComponent();
+        InitTrayIcon();
 
         _topMostTimer = new System.Windows.Forms.Timer { Interval = 2000 };
         _topMostTimer.Tick += (_, _) => EnforceTopMost();
@@ -82,6 +85,81 @@ public sealed class MainWidgetForm : Form
         Size = new Size(WidgetWidth, WidgetHeight);
         DoubleBuffered = true;
         BackColor = ColorIdle;
+    }
+
+    private void InitTrayIcon()
+    {
+        _trayIcon = new NotifyIcon
+        {
+            Icon = CreateTrayIcon(),
+            Visible = false,
+            Text = "VoiceToText"
+        };
+
+        var trayMenu = new ContextMenuStrip
+        {
+            BackColor = Color.FromArgb(30, 30, 30),
+            Renderer = new DarkMenuRenderer()
+        };
+
+        var showItem = new ToolStripMenuItem("Mostrar")
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30)
+        };
+        showItem.Click += (_, _) => ShowWidget();
+
+        var exitItem = new ToolStripMenuItem("Salir")
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30)
+        };
+        exitItem.Click += (_, _) => Application.Exit();
+
+        trayMenu.Items.AddRange(new ToolStripItem[] { showItem, exitItem });
+
+        _trayIcon.ContextMenuStrip = trayMenu;
+        _trayIcon.DoubleClick += (_, _) => ShowWidget();
+    }
+
+    private static Icon CreateTrayIcon()
+    {
+        using var bmp = new Bitmap(16, 16);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.Clear(Color.Transparent);
+
+        using var pen = new Pen(Color.White, 1.5f);
+        using var brush = new SolidBrush(Color.White);
+
+        g.FillRoundedRect(brush, 6, 1, 4, 8, 2);
+
+        using var arcPath = new GraphicsPath();
+        arcPath.AddArc(4, 0, 8, 6, 180, 180);
+        arcPath.CloseFigure();
+        g.DrawPath(pen, arcPath);
+
+        g.DrawLine(pen, 8, 9, 8, 12);
+        g.DrawLine(pen, 5, 12, 11, 12);
+
+        IntPtr hIcon = bmp.GetHicon();
+        return Icon.FromHandle(hIcon);
+    }
+
+    private void HideWidget()
+    {
+        _isHidden = true;
+        Hide();
+        _trayIcon!.Visible = true;
+    }
+
+    private void ShowWidget()
+    {
+        _isHidden = false;
+        _trayIcon!.Visible = false;
+        Show();
+        BringToFront();
+        EnforceTopMost();
     }
 
     protected override CreateParams CreateParams
@@ -302,7 +380,12 @@ public sealed class MainWidgetForm : Form
 
         providerMenu.DropDownItems.AddRange(new ToolStripItem[] { groqItem, localItem, modelConfigItem });
 
-        var separator = new ToolStripSeparator { BackColor = Color.FromArgb(50, 50, 50) };
+        var hideItem = new ToolStripMenuItem("Ocultar")
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30)
+        };
+        hideItem.Click += (_, _) => HideWidget();
 
         var exitItem = new ToolStripMenuItem("Salir")
         {
@@ -311,7 +394,7 @@ public sealed class MainWidgetForm : Form
         };
         exitItem.Click += (_, _) => Application.Exit();
 
-        contextMenu.Items.AddRange(new ToolStripItem[] { settingsItem, apiKeyItem, providerMenu, separator, exitItem });
+        contextMenu.Items.AddRange(new ToolStripItem[] { settingsItem, apiKeyItem, providerMenu, hideItem, exitItem });
         return contextMenu;
     }
 
@@ -391,6 +474,12 @@ public sealed class MainWidgetForm : Form
         if (InvokeRequired)
         {
             Invoke(new Action(OnHotKeyPressed));
+            return;
+        }
+
+        if (_isHidden)
+        {
+            ShowWidget();
             return;
         }
 
@@ -698,6 +787,7 @@ public sealed class MainWidgetForm : Form
         {
             _hotKeyService.HotKeyPressed -= OnHotKeyPressed;
         }
+        _trayIcon?.Dispose();
         SavePosition();
         base.OnFormClosing(e);
     }
@@ -734,6 +824,12 @@ internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
         using var pen = new Pen(Color.FromArgb(50, 50, 50));
         var y = e.Item.Height / 2;
         e.Graphics.DrawLine(pen, 0, y, e.Item.Width, y);
+    }
+
+    protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+    {
+        using var pen = new Pen(Color.FromArgb(30, 30, 30));
+        e.Graphics.DrawRectangle(pen, 0, 0, e.AffectedBounds.Width - 1, e.AffectedBounds.Height - 1);
     }
 }
 
