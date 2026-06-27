@@ -2,13 +2,16 @@ using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using VoiceToTextWidget.Models;
 
 namespace VoiceToTextWidget.Services;
 
 public sealed class GroqApiSpeechService : ISpeechRecognitionService
 {
     private const string ApiEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
+    private const string ChatEndpoint = "https://api.groq.com/openai/v1/chat/completions";
     private const string Model = "whisper-large-v3";
+    private const string TranslationModel = "llama-3.3-70b-versatile";
     private const int SampleRate = 16000;
     private const int MinAudioBytes = SampleRate * 2 / 4;
 
@@ -46,7 +49,7 @@ public sealed class GroqApiSpeechService : ISpeechRecognitionService
         }
 
         var apiKey = _apiKeyManager.GetKey();
-        var language = _settings.Settings.Language;
+        var language = _settings.Settings.AppLanguage;
 
         try
         {
@@ -57,8 +60,12 @@ public sealed class GroqApiSpeechService : ISpeechRecognitionService
             streamContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
             content.Add(streamContent, "file", "audio.wav");
             content.Add(new StringContent(Model), "model");
-            content.Add(new StringContent(language), "language");
             content.Add(new StringContent("0"), "temperature");
+
+            if (!string.IsNullOrEmpty(language) && language != "auto")
+            {
+                content.Add(new StringContent(language), "language");
+            }
 
             using var request = new HttpRequestMessage(HttpMethod.Post, ApiEndpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
@@ -84,6 +91,59 @@ public sealed class GroqApiSpeechService : ISpeechRecognitionService
         {
             Debug.WriteLine($"[Groq] Transcription error: {ex.Message}");
             throw;
+        }
+    }
+
+    public async Task<string> TranslateTextAsync(string text, string targetLanguageCode)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return text;
+
+        var apiKey = _apiKeyManager.GetKey();
+        var targetName = AppLanguages.GetTargetDisplayName(targetLanguageCode);
+
+        try
+        {
+            var requestBody = new
+            {
+                model = TranslationModel,
+                messages = new object[]
+                {
+                    new { role = "system", content = $"Eres un traductor profesional. Traduce el siguiente texto al idioma {targetName} ({targetLanguageCode}). Responde SOLO con la traducción, sin explicaciones, sin comillas, sin texto adicional." },
+                    new { role = "user", content = text }
+                },
+                temperature = 0.3
+            };
+
+            var json = JsonSerializer.Serialize(requestBody);
+            using var request = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.SendAsync(request);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Debug.WriteLine($"[Groq] Translation API error {response.StatusCode}: {responseBody}");
+                return text;
+            }
+
+            _apiKeyManager.RecordUsage(apiKey);
+
+            using var doc = JsonDocument.Parse(responseBody);
+            var translated = doc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString();
+
+            return translated?.Trim() ?? text;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Groq] Translation error: {ex.Message}");
+            return text;
         }
     }
 

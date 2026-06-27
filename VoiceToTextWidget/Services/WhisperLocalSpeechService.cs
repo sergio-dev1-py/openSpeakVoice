@@ -99,13 +99,18 @@ public sealed class WhisperLocalSpeechService : ISpeechRecognitionService
 
         try
         {
-            var language = _settings.Settings.Language;
+            var language = _settings.Settings.AppLanguage;
 
-            using var processor = _whisperFactory.CreateBuilder()
-                .WithLanguage(language)
+            var builder = _whisperFactory.CreateBuilder()
                 .WithTokenTimestamps()
-                .WithTemperature(0.0f)
-                .Build();
+                .WithTemperature(0.0f);
+
+            if (!string.IsNullOrEmpty(language) && language != "auto")
+            {
+                builder = builder.WithLanguage(language);
+            }
+
+            using var processor = builder.Build();
 
             using var wavStream = ConvertPcmToWav(audioData);
 

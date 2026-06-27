@@ -27,6 +27,7 @@ public sealed class SettingsService
             {
                 var json = File.ReadAllText(_settingsPath);
                 _settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                MigrateSettings();
             }
             else
             {
@@ -37,6 +38,38 @@ public sealed class SettingsService
         {
             _settings = new AppSettings();
         }
+    }
+
+    private void MigrateSettings()
+    {
+        bool changed = false;
+
+        if (!string.IsNullOrEmpty(_settings.Language) && _settings.Language != "auto"
+            && (_settings.AppLanguage == "es" && _settings.Language != "es"))
+        {
+            _settings.AppLanguage = _settings.Language;
+            changed = true;
+        }
+
+        if (string.IsNullOrEmpty(_settings.AppLanguage))
+        {
+            _settings.AppLanguage = "es";
+            changed = true;
+        }
+
+        if (string.IsNullOrEmpty(_settings.Mode))
+        {
+            _settings.Mode = "transcription";
+            changed = true;
+        }
+
+        if (string.IsNullOrEmpty(_settings.TargetLanguage))
+        {
+            _settings.TargetLanguage = "en";
+            changed = true;
+        }
+
+        if (changed) Save();
     }
     
     public void Save()
@@ -101,6 +134,25 @@ public sealed class SettingsService
     {
         _settings.BorderColor = borderColor;
         _settings.MulticolorBorder = multicolor;
+        Save();
+    }
+
+    public void UpdateAppLanguage(string code)
+    {
+        _settings.AppLanguage = code;
+        _settings.Language = code;
+        Save();
+    }
+
+    public void UpdateMode(string mode)
+    {
+        _settings.Mode = mode;
+        Save();
+    }
+
+    public void UpdateTargetLanguage(string code)
+    {
+        _settings.TargetLanguage = code;
         Save();
     }
 }

@@ -22,6 +22,9 @@ public class AppSettings
     public DateTime ApiKey2WindowStart { get; set; } = DateTime.MinValue;
     
     public string Language { get; set; } = "es";
+    public string AppLanguage { get; set; } = "es";
+    public string Mode { get; set; } = "transcription";
+    public string TargetLanguage { get; set; } = "en";
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public SttProvider ActiveProvider { get; set; } = SttProvider.GroqApi;

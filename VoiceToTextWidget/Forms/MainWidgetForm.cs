@@ -30,6 +30,7 @@ public sealed class MainWidgetForm : Form
     private bool _isHidden;
     private ToolStripMenuItem? _hideMenuItem;
     private ToolStripMenuItem? _exitMenuItem;
+    private ToolStripMenuItem? _translateMenu;
 
     private int _pulseAlpha = 180;
     private int _pulseDirection = 1;
@@ -44,6 +45,8 @@ public sealed class MainWidgetForm : Form
     private static readonly Color ColorIdle = Color.FromArgb(45, 45, 48);
     private static readonly Color ColorListening = Color.FromArgb(200, 50, 50);
     private static readonly Color ColorTranscribing = Color.FromArgb(200, 140, 40);
+
+    private string CurrentLang => _settingsService.Settings.AppLanguage;
 
     public MainWidgetForm(
         SettingsService settingsService,
@@ -286,16 +289,20 @@ public sealed class MainWidgetForm : Form
         switch (_currentState)
         {
             case AppState.Listening:
-                text = "Escuchando";
+                text = WidgetStrings.Get("status_listening", CurrentLang);
                 textColor = Color.FromArgb(255, 255, 255);
                 break;
             case AppState.Transcribing:
                 var dots = new string('.', (_animFrame % 3) + 1);
-                text = "Transcribiendo" + dots;
+                var isTranslating = _settingsService.Settings.Mode == "translation";
+                var baseText = isTranslating
+                    ? WidgetStrings.Get("status_translating", CurrentLang)
+                    : WidgetStrings.Get("status_transcribing", CurrentLang);
+                text = baseText + dots;
                 textColor = Color.FromArgb(255, 255, 255);
                 break;
             default:
-                text = "Inactivo";
+                text = WidgetStrings.Get("status_ready", CurrentLang);
                 textColor = Color.FromArgb(140, 140, 140);
                 break;
         }
@@ -338,6 +345,7 @@ public sealed class MainWidgetForm : Form
 
     private ContextMenuStrip SetupContextMenu()
     {
+        var lang = CurrentLang;
         var contextMenu = new ContextMenuStrip
         {
             BackColor = Color.FromArgb(30, 30, 30),
@@ -345,28 +353,28 @@ public sealed class MainWidgetForm : Form
             Renderer = new DarkMenuRenderer()
         };
 
-        var settingsItem = new ToolStripMenuItem("Configuracion...")
+        var settingsItem = new ToolStripMenuItem(WidgetStrings.Get("menu_config", lang))
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30)
         };
         settingsItem.Click += (_, _) => ShowSettingsDialog();
 
-        var apiKeyItem = new ToolStripMenuItem("Configurar API Keys...")
+        var apiKeyItem = new ToolStripMenuItem(WidgetStrings.Get("menu_apikeys", lang))
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30)
         };
         apiKeyItem.Click += (_, _) => ShowApiKeyDialog();
 
-        var providerMenu = new ToolStripMenuItem("Proveedor de voz")
+        var providerMenu = new ToolStripMenuItem(WidgetStrings.Get("menu_provider", lang))
         {
             Name = "providerMenu",
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30)
         };
 
-        var groqItem = new ToolStripMenuItem("Groq API (Nube)")
+        var groqItem = new ToolStripMenuItem(WidgetStrings.Get("menu_groq", lang))
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30),
@@ -374,7 +382,7 @@ public sealed class MainWidgetForm : Form
         };
         groqItem.Click += (_, _) => SwitchProvider(SttProvider.GroqApi);
 
-        var localItem = new ToolStripMenuItem("Whisper Local (GPU/CPU)")
+        var localItem = new ToolStripMenuItem(WidgetStrings.Get("menu_local", lang))
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30),
@@ -382,7 +390,7 @@ public sealed class MainWidgetForm : Form
         };
         localItem.Click += (_, _) => SwitchProvider(SttProvider.LocalWhisper);
 
-        var modelConfigItem = new ToolStripMenuItem("Configurar modelo local...")
+        var modelConfigItem = new ToolStripMenuItem(WidgetStrings.Get("menu_model", lang))
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30)
@@ -391,7 +399,53 @@ public sealed class MainWidgetForm : Form
 
         providerMenu.DropDownItems.AddRange(new ToolStripItem[] { groqItem, localItem, modelConfigItem });
 
-        _hideMenuItem = new ToolStripMenuItem("Ocultar")
+        var modeMenu = new ToolStripMenuItem(WidgetStrings.Get("menu_mode", lang))
+        {
+            Name = "modeMenu",
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30)
+        };
+
+        var transcribeItem = new ToolStripMenuItem(WidgetStrings.Get("mode_transcription", lang))
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30),
+            Checked = _settingsService.Settings.Mode == "transcription"
+        };
+        transcribeItem.Click += (_, _) => SwitchMode("transcription");
+
+        var translateItem = new ToolStripMenuItem(WidgetStrings.Get("mode_translation", lang))
+        {
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30),
+            Checked = _settingsService.Settings.Mode == "translation"
+        };
+        translateItem.Click += (_, _) => SwitchMode("translation");
+
+        modeMenu.DropDownItems.AddRange(new ToolStripItem[] { transcribeItem, translateItem });
+
+        _translateMenu = new ToolStripMenuItem(WidgetStrings.Get("menu_target_lang", lang))
+        {
+            Name = "translateMenu",
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 30),
+            Visible = _settingsService.Settings.Mode == "translation"
+        };
+
+        foreach (var targetLang in AppLanguages.TargetLanguages)
+        {
+            var item = new ToolStripMenuItem($"{targetLang.DisplayName} ({targetLang.Code})")
+            {
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(30, 30, 30),
+                Tag = targetLang.Code,
+                Checked = _settingsService.Settings.TargetLanguage == targetLang.Code
+            };
+            item.Click += (_, _) => SwitchTargetLanguage(targetLang.Code);
+            _translateMenu.DropDownItems.Add(item);
+        }
+
+        _hideMenuItem = new ToolStripMenuItem(WidgetStrings.Get("menu_hide", lang))
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30),
@@ -399,14 +453,19 @@ public sealed class MainWidgetForm : Form
         };
         _hideMenuItem.Click += (_, _) => HideWidget();
 
-        _exitMenuItem = new ToolStripMenuItem("Salir")
+        _exitMenuItem = new ToolStripMenuItem(WidgetStrings.Get("menu_exit", lang))
         {
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30)
         };
         _exitMenuItem.Click += (_, _) => Application.Exit();
 
-        contextMenu.Items.AddRange(new ToolStripItem[] { settingsItem, apiKeyItem, providerMenu, _hideMenuItem, _exitMenuItem });
+        contextMenu.Items.AddRange(new ToolStripItem[]
+        {
+            settingsItem, apiKeyItem, providerMenu, modeMenu, _translateMenu,
+            _hideMenuItem, _exitMenuItem
+        });
+
         return contextMenu;
     }
 
@@ -547,6 +606,12 @@ public sealed class MainWidgetForm : Form
                     return;
                 }
 
+                if (_settingsService.Settings.Mode == "translation"
+                    && _activeSpeechService == _groqService)
+                {
+                    text = await _groqService.TranslateTextAsync(text, _settingsService.Settings.TargetLanguage);
+                }
+
                 _textInjection.InjectText(text);
             }
             catch (Exception ex)
@@ -592,8 +657,13 @@ public sealed class MainWidgetForm : Form
         {
             _settingsService.UpdateHotKey(settingsForm.HotKeyValue, settingsForm.SelectedModifiers);
             _settingsService.UpdateAppearance(settingsForm.BorderColorHex, settingsForm.MulticolorBorder);
+            _settingsService.UpdateAppLanguage(settingsForm.SelectedLanguage);
+            _settingsService.UpdateMode(settingsForm.SelectedMode);
+            _settingsService.UpdateTargetLanguage(settingsForm.SelectedTargetLanguage);
+
             Invalidate();
             _hotKeyService?.Reregister();
+            RefreshContextMenu();
 
             if (_hotKeyService != null && !_hotKeyService.IsRegistered)
             {
@@ -731,6 +801,20 @@ public sealed class MainWidgetForm : Form
         }
     }
 
+    private void SwitchMode(string mode)
+    {
+        _settingsService.UpdateMode(mode);
+        if (_translateMenu != null)
+            _translateMenu.Visible = mode == "translation";
+        UpdateModeMenuChecks();
+    }
+
+    private void SwitchTargetLanguage(string code)
+    {
+        _settingsService.UpdateTargetLanguage(code);
+        UpdateTargetLangMenuChecks();
+    }
+
     private async Task PreloadWhisperModelAsync()
     {
         try
@@ -750,22 +834,106 @@ public sealed class MainWidgetForm : Form
             foreach (ToolStripItem item in providerMenu.DropDownItems)
             {
                 if (item is ToolStripMenuItem checkItem)
-                {
                     checkItem.Checked = false;
-                }
             }
 
             var activeProvider = _settingsService.Settings.ActiveProvider;
-            var targetItem = activeProvider == SttProvider.GroqApi ? "Groq API (Nube)" : "Whisper Local (GPU/CPU)";
+            var targetItem = activeProvider == SttProvider.GroqApi
+                ? WidgetStrings.Get("menu_groq", CurrentLang)
+                : WidgetStrings.Get("menu_local", CurrentLang);
 
             foreach (ToolStripItem item in providerMenu.DropDownItems)
             {
                 if (item is ToolStripMenuItem checkItem && checkItem.Text == targetItem)
-                {
                     checkItem.Checked = true;
+            }
+        }
+    }
+
+    private void UpdateModeMenuChecks()
+    {
+        if (_contextMenu.Items["modeMenu"] is ToolStripMenuItem modeMenu)
+        {
+            foreach (ToolStripItem item in modeMenu.DropDownItems)
+            {
+                if (item is ToolStripMenuItem checkItem)
+                    checkItem.Checked = false;
+            }
+
+            var activeMode = _settingsService.Settings.Mode;
+            var targetItem = activeMode == "transcription"
+                ? WidgetStrings.Get("mode_transcription", CurrentLang)
+                : WidgetStrings.Get("mode_translation", CurrentLang);
+
+            foreach (ToolStripItem item in modeMenu.DropDownItems)
+            {
+                if (item is ToolStripMenuItem checkItem && checkItem.Text == targetItem)
+                    checkItem.Checked = true;
+            }
+        }
+    }
+
+    private void UpdateTargetLangMenuChecks()
+    {
+        if (_translateMenu == null) return;
+
+        foreach (ToolStripItem item in _translateMenu.DropDownItems)
+        {
+            if (item is ToolStripMenuItem checkItem)
+                checkItem.Checked = false;
+        }
+
+        var targetCode = _settingsService.Settings.TargetLanguage;
+        foreach (ToolStripItem item in _translateMenu.DropDownItems)
+        {
+            if (item is ToolStripMenuItem checkItem && checkItem.Tag is string code && code == targetCode)
+                checkItem.Checked = true;
+        }
+    }
+
+    private void RefreshContextMenu()
+    {
+        var lang = CurrentLang;
+
+        if (_contextMenu.Items["providerMenu"] is ToolStripMenuItem providerMenu)
+            providerMenu.Text = WidgetStrings.Get("menu_provider", lang);
+
+        if (_contextMenu.Items["modeMenu"] is ToolStripMenuItem modeMenu)
+            modeMenu.Text = WidgetStrings.Get("menu_mode", lang);
+
+        if (_translateMenu != null)
+        {
+            _translateMenu.Text = WidgetStrings.Get("menu_target_lang", lang);
+            _translateMenu.Visible = _settingsService.Settings.Mode == "translation";
+        }
+
+        if (_hideMenuItem != null)
+            _hideMenuItem.Text = WidgetStrings.Get("menu_hide", lang);
+
+        if (_exitMenuItem != null)
+            _exitMenuItem.Text = WidgetStrings.Get("menu_exit", lang);
+
+        foreach (ToolStripMenuItem item in _contextMenu.Items)
+        {
+            if (item.HasDropDownItems)
+            {
+                foreach (ToolStripItem subItem in item.DropDownItems)
+                {
+                    if (subItem.Text == WidgetStrings.Get("menu_groq", lang) ||
+                        subItem.Text == WidgetStrings.Get("menu_local", lang) ||
+                        subItem.Text == WidgetStrings.Get("menu_model", lang) ||
+                        subItem.Text == WidgetStrings.Get("mode_transcription", lang) ||
+                        subItem.Text == WidgetStrings.Get("mode_translation", lang))
+                    {
+                        // these are set by their respective update methods
+                    }
                 }
             }
         }
+
+        UpdateProviderMenuChecks();
+        UpdateModeMenuChecks();
+        UpdateTargetLangMenuChecks();
     }
 
     private void ShowLocalModelDialog()
