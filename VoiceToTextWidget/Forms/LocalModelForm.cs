@@ -35,40 +35,54 @@ public sealed class LocalModelForm : Form
         _settingsService = settingsService;
 
         Text = "Configurar Modelo Local - Whisper";
-        Size = new Size(480, 380);
+        Size = new Size(500, 400);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         BackColor = Color.FromArgb(30, 30, 30);
+        ForeColor = Color.White;
+        Font = new Font("Segoe UI", 9);
+
+        var mainPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(24),
+            ColumnCount = 1,
+            RowCount = 9,
+            BackColor = Color.Transparent,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink
+        };
+        for (int i = 0; i < 9; i++)
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainPanel.RowStyles[8] = new RowStyle(SizeType.Percent, 100);
 
         var lblTitle = new Label
         {
             Text = "Modelo de transcripcion local",
-            Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
             AutoSize = true,
-            Location = new Point(15, 12),
             ForeColor = Color.White,
-            BackColor = Color.Transparent
+            Margin = new Padding(0, 0, 0, 8)
         };
 
         var lblModel = new Label
         {
             Text = "Modelo:",
             AutoSize = true,
-            Location = new Point(15, 50),
-            ForeColor = Color.White,
-            BackColor = Color.Transparent
+            ForeColor = Color.FromArgb(120, 120, 120),
+            Margin = new Padding(0, 0, 0, 4)
         };
 
         _modelCombo = new ComboBox
         {
-            Location = new Point(15, 72),
-            Width = 435,
+            Width = 440,
             DropDownStyle = ComboBoxStyle.DropDownList,
             BackColor = Color.FromArgb(45, 45, 48),
             ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat
+            FlatStyle = FlatStyle.Standard,
+            Margin = new Padding(0, 0, 0, 4)
         };
         foreach (var model in Models)
         {
@@ -84,90 +98,89 @@ public sealed class LocalModelForm : Form
         {
             Text = "",
             AutoSize = true,
-            Location = new Point(15, 100),
-            ForeColor = Color.FromArgb(160, 160, 160),
-            BackColor = Color.Transparent
+            ForeColor = Color.FromArgb(120, 120, 120),
+            Margin = new Padding(0, 0, 0, 8)
         };
 
         _gpuCheckbox = new CheckBox
         {
             Text = "Usar aceleracion GPU (recomendado)",
-            Location = new Point(15, 130),
-            Width = 435,
+            Width = 440,
             Checked = _settingsService.Settings.UseGpuAcceleration,
             ForeColor = Color.White,
-            BackColor = Color.Transparent
+            AutoSize = true,
+            Margin = new Padding(0, 0, 0, 8)
         };
 
         _statusLabel = new Label
         {
             Text = "Estado: Verificando...",
             AutoSize = true,
-            Location = new Point(15, 165),
-            ForeColor = Color.FromArgb(120, 180, 255),
-            BackColor = Color.Transparent
+            ForeColor = Color.FromArgb(79, 110, 247),
+            Margin = new Padding(0, 0, 0, 12)
         };
 
-        _downloadButton = new Button
+        var buttonPanel = new FlowLayoutPanel
         {
-            Text = "Descargar modelo",
-            Location = new Point(15, 200),
-            Width = 140,
-            Height = 35,
-            BackColor = Color.FromArgb(70, 130, 180),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 8)
         };
+
+        _downloadButton = CreateStyledButton("Descargar modelo", 150, Color.FromArgb(79, 110, 247));
         _downloadButton.Click += OnDownloadClick;
-
-        _deleteButton = new Button
-        {
-            Text = "Eliminar modelo",
-            Location = new Point(170, 200),
-            Width = 140,
-            Height = 35,
-            BackColor = Color.FromArgb(180, 50, 50),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            Enabled = false
-        };
+        _deleteButton = CreateStyledButton("Eliminar modelo", 150, Color.FromArgb(180, 50, 50));
         _deleteButton.Click += OnDeleteClick;
+        _deleteButton.Enabled = false;
+        buttonPanel.Controls.Add(_downloadButton);
+        buttonPanel.Controls.Add(_deleteButton);
 
-        _okButton = new Button
+        var bottomPanel = new FlowLayoutPanel
         {
-            Text = "Guardar",
-            Location = new Point(360, 290),
-            Width = 90,
-            Height = 35,
-            BackColor = Color.FromArgb(70, 130, 180),
-            ForeColor = Color.White,
-            DialogResult = DialogResult.OK,
-            FlatStyle = FlatStyle.Flat
+            Dock = DockStyle.Bottom,
+            FlowDirection = FlowDirection.RightToLeft,
+            AutoSize = true,
+            Padding = new Padding(0, 12, 0, 0)
         };
 
-        _cancelButton = new Button
-        {
-            Text = "Cancelar",
-            Location = new Point(260, 290),
-            Width = 90,
-            Height = 35,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White,
-            DialogResult = DialogResult.Cancel,
-            FlatStyle = FlatStyle.Flat
-        };
+        _okButton = CreateStyledButton("Guardar", 90, Color.FromArgb(79, 110, 247));
+        _okButton.DialogResult = DialogResult.OK;
+        _cancelButton = CreateStyledButton("Cancelar", 90, Color.FromArgb(60, 60, 65));
+        _cancelButton.DialogResult = DialogResult.Cancel;
+        bottomPanel.Controls.Add(_okButton);
+        bottomPanel.Controls.Add(_cancelButton);
 
-        Controls.AddRange(new Control[]
-        {
-            lblTitle, lblModel, _modelCombo, _modelSizeLabel,
-            _gpuCheckbox, _statusLabel, _downloadButton, _deleteButton,
-            _okButton, _cancelButton
-        });
+        mainPanel.Controls.Add(lblTitle, 0, 0);
+        mainPanel.Controls.Add(lblModel, 0, 1);
+        mainPanel.Controls.Add(_modelCombo, 0, 2);
+        mainPanel.Controls.Add(_modelSizeLabel, 0, 3);
+        mainPanel.Controls.Add(_gpuCheckbox, 0, 4);
+        mainPanel.Controls.Add(_statusLabel, 0, 5);
+        mainPanel.Controls.Add(buttonPanel, 0, 6);
+        mainPanel.Controls.Add(new Panel { Height = 20 }, 0, 7);
+        mainPanel.Controls.Add(bottomPanel, 0, 8);
 
+        Controls.Add(mainPanel);
         AcceptButton = _okButton;
         CancelButton = _cancelButton;
 
         UpdateModelStatus();
+    }
+
+    private static Button CreateStyledButton(string text, int width, Color bgColor)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Size = new Size(width, 34),
+            BackColor = bgColor,
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Cursor = Cursors.Hand
+        };
+        button.FlatAppearance.BorderSize = 0;
+        return button;
     }
 
     private void OnModelChanged(object? sender, EventArgs e)
@@ -248,7 +261,7 @@ public sealed class LocalModelForm : Form
             if (!IsDisposed)
             {
                 _statusLabel.Text = "Descarga cancelada.";
-                _statusLabel.ForeColor = Color.FromArgb(160, 160, 160);
+                _statusLabel.ForeColor = Color.FromArgb(120, 120, 120);
             }
         }
         catch (Exception ex)
@@ -300,7 +313,7 @@ public sealed class LocalModelForm : Form
             {
                 File.Delete(modelPath);
                 _statusLabel.Text = "Modelo eliminado.";
-                _statusLabel.ForeColor = Color.FromArgb(160, 160, 160);
+                _statusLabel.ForeColor = Color.FromArgb(120, 120, 120);
                 UpdateModelStatus();
             }
             catch (Exception ex)

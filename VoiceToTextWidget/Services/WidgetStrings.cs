@@ -36,6 +36,7 @@ public static class WidgetStrings
             ["settings_capture"] = "Capturar",
             ["settings_capture_prompt"] = "Presiona una tecla...",
             ["settings_invalid_key"] = "Selecciona una tecla principal valida antes de guardar.",
+            ["settings_all_languages"] = "Ver todos los idiomas...",
         },
         ["en"] = new()
         {
@@ -69,6 +70,7 @@ public static class WidgetStrings
             ["settings_capture"] = "Capture",
             ["settings_capture_prompt"] = "Press a key...",
             ["settings_invalid_key"] = "Please select a valid main key before saving.",
+            ["settings_all_languages"] = "See all languages...",
         },
     };
 

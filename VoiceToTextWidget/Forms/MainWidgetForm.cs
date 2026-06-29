@@ -38,9 +38,10 @@ public sealed class MainWidgetForm : Form
     private int _animTick;
     private float _colorHue = 0f;
 
-    private const int WidgetWidth = 175;
-    private const int WidgetHeight = 38;
-    private const int CornerRadius = 18;
+    private const int WidgetWidth = 140;
+    private const int WidgetHeight = 27;
+    private const int CornerRadius = 10;
+    private const int BorderWidth = 2;
 
     private static readonly Color ColorIdle = Color.FromArgb(45, 45, 48);
     private static readonly Color ColorListening = Color.FromArgb(200, 50, 50);
@@ -200,7 +201,7 @@ public sealed class MainWidgetForm : Form
 
         var bgColor = GetAnimatedBackground();
         var borderColor = GetBorderColor();
-        var bw = 5;
+        var bw = BorderWidth;
 
         var outerRect = new Rectangle(0, 0, Width - 1, Height - 1);
         using var outerPath = GetRoundedRectPath(outerRect, CornerRadius);
@@ -208,7 +209,7 @@ public sealed class MainWidgetForm : Form
         g.FillPath(borderBrush, outerPath);
 
         var innerRect = new Rectangle(bw, bw, Width - 1 - bw * 2, Height - 1 - bw * 2);
-        using var innerPath = GetRoundedRectPath(innerRect, CornerRadius - bw);
+        using var innerPath = GetRoundedRectPath(innerRect, Math.Max(1, CornerRadius - bw));
         using var bgBrush = new SolidBrush(bgColor);
         g.FillPath(bgBrush, innerPath);
 
@@ -264,21 +265,30 @@ public sealed class MainWidgetForm : Form
             ? GetBorderColor()
             : Color.FromArgb(140, 140, 140);
 
-        int cx = bounds.Left + 22;
-        int cy = bounds.Top + bounds.Height / 2;
+        int iconBoxSize = 20;
+        int cx = bounds.Left + 5 + iconBoxSize / 2;
+        int cy = bounds.Top + (bounds.Height - iconBoxSize) / 2;
 
-        using var pen = new Pen(micColor, 2f);
+        using var boxBrush = new SolidBrush(Color.FromArgb(62, 62, 66));
+        using var boxPath = GetRoundedRectPath(
+            new Rectangle(cx - iconBoxSize / 2, cy, iconBoxSize, iconBoxSize), 5);
+        g.FillPath(boxBrush, boxPath);
+
+        using var pen = new Pen(micColor, 1.5f);
         using var brush = new SolidBrush(micColor);
 
-        g.FillRoundedRect(brush, cx - 5, cy - 10, 10, 15, 5);
+        int micCx = cx;
+        int micCy = cy + iconBoxSize / 2;
+
+        g.FillRoundedRect(brush, micCx - 3, micCy - 5, 6, 9, 3);
 
         using var arcPath = new GraphicsPath();
-        arcPath.AddArc(cx - 9, cy - 14, 18, 14, 180, 180);
+        arcPath.AddArc(micCx - 5, micCy - 8, 10, 8, 180, 180);
         arcPath.CloseFigure();
         g.DrawPath(pen, arcPath);
 
-        g.DrawLine(pen, cx, cy + 1, cx, cy + 7);
-        g.DrawLine(pen, cx - 5, cy + 7, cx + 5, cy + 7);
+        g.DrawLine(pen, micCx, micCy + 1, micCx, micCy + 4);
+        g.DrawLine(new Pen(micColor, 1.2f), micCx - 3, micCy + 4, micCx + 3, micCy + 4);
     }
 
     private void DrawStatusText(Graphics g, Rectangle bounds)
@@ -307,10 +317,10 @@ public sealed class MainWidgetForm : Form
                 break;
         }
 
-        using var font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        using var font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
         using var brush = new SolidBrush(textColor);
         var textSize = g.MeasureString(text, font);
-        var textX = bounds.Left + 40;
+        var textX = bounds.Left + 28;
         var textY = (bounds.Top + (bounds.Height - textSize.Height) / 2);
         g.DrawString(text, font, brush, textX, textY);
     }
@@ -432,7 +442,7 @@ public sealed class MainWidgetForm : Form
             Visible = _settingsService.Settings.Mode == "translation"
         };
 
-        foreach (var targetLang in AppLanguages.TargetLanguages)
+        foreach (var targetLang in AppLanguages.CommonLanguages)
         {
             var item = new ToolStripMenuItem($"{targetLang.DisplayName} ({targetLang.Code})")
             {

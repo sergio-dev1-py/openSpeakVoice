@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using VoiceToTextWidget.Models;
 using VoiceToTextWidget.Services;
@@ -19,27 +20,34 @@ public sealed class SettingsForm : Form
     private readonly Label _colorHexLabel;
     private readonly CheckBox _multicolorCheck;
     private readonly ComboBox _languageCombo;
+    private readonly Button _moreLangButton;
     private readonly ComboBox _modeCombo;
     private readonly ComboBox _targetLangCombo;
+    private readonly Button _moreTargetLangButton;
     private readonly Label _targetLangLabel;
+    private readonly Panel _targetLangPanel;
     private readonly Button _saveButton;
     private readonly Button _cancelButton;
 
     private bool _capturingKey;
     private Color _selectedBorderColor;
     private readonly string _currentLang;
+    private string _selectedLangCode;
+    private string _selectedTargetLangCode;
 
     public Keys HotKeyValue { get; private set; }
     public HotKeyModifierKeys SelectedModifiers { get; private set; }
     public string BorderColorHex => ColorTranslator.ToHtml(_selectedBorderColor);
     public bool MulticolorBorder => _multicolorCheck.Checked;
-    public string SelectedLanguage => AppLanguages.Languages[_languageCombo.SelectedIndex].Code;
+    public string SelectedLanguage => _selectedLangCode;
     public string SelectedMode => _modeCombo.SelectedIndex == 0 ? "transcription" : "translation";
-    public string SelectedTargetLanguage => AppLanguages.TargetLanguages[_targetLangCombo.SelectedIndex].Code;
+    public string SelectedTargetLanguage => _selectedTargetLangCode;
 
     public SettingsForm(AppSettings currentSettings)
     {
         _currentLang = currentSettings.AppLanguage;
+        _selectedLangCode = currentSettings.AppLanguage;
+        _selectedTargetLangCode = currentSettings.TargetLanguage;
         HotKeyValue = currentSettings.HotKey;
         SelectedModifiers = currentSettings.Modifiers;
         _selectedBorderColor = ColorTranslator.FromHtml(currentSettings.BorderColor);
@@ -50,19 +58,45 @@ public sealed class SettingsForm : Form
         _altCheck = CreateModifierCheckBox("Alt", HotKeyModifierKeys.Alt);
         _shiftCheck = CreateModifierCheckBox("Shift", HotKeyModifierKeys.Shift);
         _winCheck = CreateModifierCheckBox("Win", HotKeyModifierKeys.Win);
-        _colorButton = CreateColorButton();
+        _colorButton = CreateStyledButton(WidgetStrings.Get("settings_capture", _currentLang), 100, Color.FromArgb(60, 60, 65));
+        _colorButton.Click += OnColorButtonClick;
         _colorPreview = CreateColorPreview();
         _colorHexLabel = CreateColorHexLabel();
         _multicolorCheck = CreateMulticolorCheckBox();
         _multicolorCheck.Checked = currentSettings.MulticolorBorder;
 
         _languageCombo = CreateLanguageCombo(currentSettings.AppLanguage);
+        _moreLangButton = CreateSmallButton("...");
         _modeCombo = CreateModeCombo(currentSettings.Mode);
         _targetLangCombo = CreateTargetLangCombo(currentSettings.TargetLanguage);
+        _moreTargetLangButton = CreateSmallButton("...");
         _targetLangLabel = CreateLabel(WidgetStrings.Get("settings_target_lang", _currentLang));
 
-        _cancelButton = CreateCancelButton();
-        _saveButton = CreateSaveButton();
+        _cancelButton = CreateStyledButton(WidgetStrings.Get("settings_cancel", _currentLang), 90, Color.FromArgb(60, 60, 65));
+        _cancelButton.DialogResult = DialogResult.Cancel;
+        _saveButton = CreateStyledButton(WidgetStrings.Get("settings_save", _currentLang), 90, Color.FromArgb(79, 110, 247));
+        _saveButton.Click += OnSaveClick;
+        _saveButton.DialogResult = DialogResult.OK;
+
+        _targetLangPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 10),
+            Visible = currentSettings.Mode == "translation"
+        };
+        _targetLangPanel.Controls.Add(_targetLangLabel);
+        _targetLangPanel.Controls.Add(_targetLangCombo);
+        _targetLangPanel.Controls.Add(_moreTargetLangButton);
+
+        _modeCombo.SelectedIndexChanged += (_, _) =>
+        {
+            _targetLangPanel.Visible = _modeCombo.SelectedIndex == 1;
+        };
+
+        _moreLangButton.Click += (_, _) => ShowLanguagePicker(false);
+        _moreTargetLangButton.Click += (_, _) => ShowLanguagePicker(true);
 
         InitializeComponent();
         LoadCurrentSettings();
@@ -75,8 +109,8 @@ public sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        Size = new Size(480, 620);
-        BackColor = Color.FromArgb(45, 45, 48);
+        Size = new Size(500, 640);
+        BackColor = Color.FromArgb(30, 30, 30);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 9);
         KeyPreview = true;
@@ -85,23 +119,31 @@ public sealed class SettingsForm : Form
         var mainPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(20),
+            Padding = new Padding(24),
             ColumnCount = 1,
-            RowCount = 17,
+            RowCount = 18,
             BackColor = Color.Transparent,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink
         };
 
-        for (int i = 0; i < 17; i++)
+        for (int i = 0; i < 18; i++)
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        mainPanel.RowStyles[16] = new RowStyle(SizeType.Percent, 100);
+        mainPanel.RowStyles[17] = new RowStyle(SizeType.Percent, 100);
 
         var lblLangHeader = CreateSectionLabel(WidgetStrings.Get("settings_language", _currentLang));
-        var lblLang = CreateLabel(WidgetStrings.Get("settings_language", _currentLang) + ":");
+
+        var langPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 10)
+        };
+        langPanel.Controls.Add(_languageCombo);
+        langPanel.Controls.Add(_moreLangButton);
 
         var lblModeHeader = CreateSectionLabel(WidgetStrings.Get("settings_mode", _currentLang));
-        var lblMode = CreateLabel(WidgetStrings.Get("settings_mode", _currentLang) + ":");
 
         var lblHotkey = CreateLabel(WidgetStrings.Get("settings_hotkey", _currentLang));
         var lblModifiers = CreateLabel(WidgetStrings.Get("settings_modifiers", _currentLang));
@@ -143,24 +185,8 @@ public sealed class SettingsForm : Form
         {
             Text = WidgetStrings.Get("settings_multicolor_desc", _currentLang),
             AutoSize = true,
-            ForeColor = Color.FromArgb(160, 160, 160),
+            ForeColor = Color.FromArgb(120, 120, 120),
             Margin = new Padding(25, 5, 0, 15)
-        };
-
-        var targetLangPanel = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            Margin = new Padding(0, 0, 0, 10),
-            Visible = _modeCombo.SelectedIndex == 1
-        };
-        targetLangPanel.Controls.Add(_targetLangLabel);
-        targetLangPanel.Controls.Add(_targetLangCombo);
-
-        _modeCombo.SelectedIndexChanged += (_, _) =>
-        {
-            targetLangPanel.Visible = _modeCombo.SelectedIndex == 1;
         };
 
         var buttonPanel = new FlowLayoutPanel
@@ -168,27 +194,29 @@ public sealed class SettingsForm : Form
             Dock = DockStyle.Bottom,
             FlowDirection = FlowDirection.RightToLeft,
             AutoSize = true,
-            Padding = new Padding(0, 10, 0, 0)
+            Padding = new Padding(0, 12, 0, 0)
         };
         buttonPanel.Controls.Add(_cancelButton);
         buttonPanel.Controls.Add(_saveButton);
 
         mainPanel.Controls.Add(lblLangHeader, 0, 0);
-        mainPanel.Controls.Add(_languageCombo, 0, 1);
+        mainPanel.Controls.Add(langPanel, 0, 1);
         mainPanel.Controls.Add(lblModeHeader, 0, 2);
         mainPanel.Controls.Add(_modeCombo, 0, 3);
-        mainPanel.Controls.Add(targetLangPanel, 0, 4);
-        mainPanel.Controls.Add(lblHotkey, 0, 5);
-        mainPanel.Controls.Add(hotKeyPanel, 0, 6);
-        mainPanel.Controls.Add(lblModifiers, 0, 7);
-        mainPanel.Controls.Add(modifiersPanel, 0, 8);
-        mainPanel.Controls.Add(lblAppearance, 0, 9);
-        mainPanel.Controls.Add(lblBorderColor, 0, 10);
-        mainPanel.Controls.Add(colorPanel, 0, 11);
-        mainPanel.Controls.Add(_multicolorCheck, 0, 12);
-        mainPanel.Controls.Add(lblMulticolor, 0, 13);
-        mainPanel.Controls.Add(new Panel { Height = 20 }, 0, 14);
-        mainPanel.Controls.Add(buttonPanel, 0, 16);
+        mainPanel.Controls.Add(_targetLangPanel, 0, 4);
+        mainPanel.Controls.Add(new Panel { Height = 8 }, 0, 5);
+        mainPanel.Controls.Add(lblHotkey, 0, 6);
+        mainPanel.Controls.Add(hotKeyPanel, 0, 7);
+        mainPanel.Controls.Add(lblModifiers, 0, 8);
+        mainPanel.Controls.Add(modifiersPanel, 0, 9);
+        mainPanel.Controls.Add(new Panel { Height = 8 }, 0, 10);
+        mainPanel.Controls.Add(lblAppearance, 0, 11);
+        mainPanel.Controls.Add(lblBorderColor, 0, 12);
+        mainPanel.Controls.Add(colorPanel, 0, 13);
+        mainPanel.Controls.Add(_multicolorCheck, 0, 14);
+        mainPanel.Controls.Add(lblMulticolor, 0, 15);
+        mainPanel.Controls.Add(new Panel { Height = 20 }, 0, 16);
+        mainPanel.Controls.Add(buttonPanel, 0, 17);
 
         Controls.Add(mainPanel);
         AcceptButton = _saveButton;
@@ -203,9 +231,9 @@ public sealed class SettingsForm : Form
         {
             Text = text,
             AutoSize = true,
-            ForeColor = Color.FromArgb(120, 180, 255),
+            ForeColor = Color.FromArgb(79, 110, 247),
             Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-            Margin = new Padding(0, 10, 0, 5)
+            Margin = new Padding(0, 8, 0, 6)
         };
     }
 
@@ -224,23 +252,46 @@ public sealed class SettingsForm : Form
     {
         var combo = new ComboBox
         {
-            Width = 200,
+            Width = 280,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = Color.FromArgb(60, 60, 65),
+            BackColor = Color.FromArgb(45, 45, 48),
             ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            Margin = new Padding(0, 0, 0, 10)
+            FlatStyle = FlatStyle.Standard,
+            Margin = new Padding(0, 0, 6, 0)
         };
 
         int selectedIndex = 0;
-        for (int i = 0; i < AppLanguages.Languages.Length; i++)
+        for (int i = 0; i < AppLanguages.CommonLanguages.Length; i++)
         {
-            combo.Items.Add($"{AppLanguages.Languages[i].DisplayName} ({AppLanguages.Languages[i].Code})");
-            if (AppLanguages.Languages[i].Code == currentLang)
+            combo.Items.Add($"{AppLanguages.CommonLanguages[i].DisplayName} ({AppLanguages.CommonLanguages[i].Code})");
+            if (AppLanguages.CommonLanguages[i].Code == currentLang)
                 selectedIndex = i;
         }
+        combo.Items.Add("─────────────────────");
+        combo.Items.Add(WidgetStrings.Get("settings_all_languages", _currentLang));
 
-        combo.SelectedIndex = selectedIndex;
+        var commonIdx = AppLanguages.FindCommonIndex(currentLang);
+        if (commonIdx >= 0)
+        {
+            combo.SelectedIndex = commonIdx;
+        }
+        else
+        {
+            combo.SelectedIndex = 0;
+        }
+
+        combo.SelectedIndexChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex < AppLanguages.CommonLanguages.Length)
+            {
+                _selectedLangCode = AppLanguages.CommonLanguages[combo.SelectedIndex].Code;
+            }
+            else if (combo.SelectedIndex == AppLanguages.CommonLanguages.Length + 1)
+            {
+                ShowLanguagePicker(false);
+            }
+        };
+
         return combo;
     }
 
@@ -248,11 +299,11 @@ public sealed class SettingsForm : Form
     {
         var combo = new ComboBox
         {
-            Width = 200,
+            Width = 280,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = Color.FromArgb(60, 60, 65),
+            BackColor = Color.FromArgb(45, 45, 48),
             ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
+            FlatStyle = FlatStyle.Standard,
             Margin = new Padding(0, 0, 0, 10)
         };
 
@@ -266,24 +317,82 @@ public sealed class SettingsForm : Form
     {
         var combo = new ComboBox
         {
-            Width = 200,
+            Width = 260,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = Color.FromArgb(60, 60, 65),
+            BackColor = Color.FromArgb(45, 45, 48),
             ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            Margin = new Padding(10, 0, 0, 10)
+            FlatStyle = FlatStyle.Standard,
+            Margin = new Padding(0, 0, 6, 0)
         };
 
-        int selectedIndex = 0;
-        for (int i = 0; i < AppLanguages.TargetLanguages.Length; i++)
+        for (int i = 0; i < AppLanguages.CommonLanguages.Length; i++)
         {
-            combo.Items.Add($"{AppLanguages.TargetLanguages[i].DisplayName} ({AppLanguages.TargetLanguages[i].Code})");
-            if (AppLanguages.TargetLanguages[i].Code == currentTarget)
-                selectedIndex = i;
+            combo.Items.Add($"{AppLanguages.CommonLanguages[i].DisplayName} ({AppLanguages.CommonLanguages[i].Code})");
+        }
+        combo.Items.Add("─────────────────────");
+        combo.Items.Add(WidgetStrings.Get("settings_all_languages", _currentLang));
+
+        var commonIdx = AppLanguages.FindCommonIndex(currentTarget);
+        if (commonIdx >= 0)
+        {
+            combo.SelectedIndex = commonIdx;
+        }
+        else
+        {
+            combo.SelectedIndex = 0;
         }
 
-        combo.SelectedIndex = selectedIndex;
+        combo.SelectedIndexChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex < AppLanguages.CommonLanguages.Length)
+            {
+                _selectedTargetLangCode = AppLanguages.CommonLanguages[combo.SelectedIndex].Code;
+            }
+            else if (combo.SelectedIndex == AppLanguages.CommonLanguages.Length + 1)
+            {
+                ShowLanguagePicker(true);
+            }
+        };
+
         return combo;
+    }
+
+    private void ShowLanguagePicker(bool isTarget)
+    {
+        using var pickerForm = new LanguagePickerForm(isTarget ? _selectedTargetLangCode : _selectedLangCode);
+        if (pickerForm.ShowDialog(this) == DialogResult.OK)
+        {
+            if (isTarget)
+            {
+                _selectedTargetLangCode = pickerForm.SelectedCode;
+                var idx = AppLanguages.FindCommonIndex(_selectedTargetLangCode);
+                if (idx >= 0)
+                {
+                    _targetLangCombo.SelectedIndex = idx;
+                }
+                else
+                {
+                    _targetLangCombo.Items[_targetLangCombo.Items.Count - 1] =
+                        $"{AppLanguages.GetDisplayName(_selectedTargetLangCode)} ({_selectedTargetLangCode})";
+                    _targetLangCombo.SelectedIndex = _targetLangCombo.Items.Count - 1;
+                }
+            }
+            else
+            {
+                _selectedLangCode = pickerForm.SelectedCode;
+                var idx = AppLanguages.FindCommonIndex(_selectedLangCode);
+                if (idx >= 0)
+                {
+                    _languageCombo.SelectedIndex = idx;
+                }
+                else
+                {
+                    _languageCombo.Items[_languageCombo.Items.Count - 1] =
+                        $"{AppLanguages.GetDisplayName(_selectedLangCode)} ({_selectedLangCode})";
+                    _languageCombo.SelectedIndex = _languageCombo.Items.Count - 1;
+                }
+            }
+        }
     }
 
     private TextBox CreateHotKeyTextBox()
@@ -292,7 +401,7 @@ public sealed class SettingsForm : Form
         {
             ReadOnly = true,
             Width = 220,
-            BackColor = Color.FromArgb(60, 60, 65),
+            BackColor = Color.FromArgb(45, 45, 48),
             ForeColor = Color.White,
             BorderStyle = BorderStyle.FixedSingle,
             Font = new Font("Segoe UI", 9),
@@ -305,32 +414,39 @@ public sealed class SettingsForm : Form
 
     private Button CreateCaptureButton()
     {
-        var button = new Button
-        {
-            Text = WidgetStrings.Get("settings_capture", _currentLang),
-            Size = new Size(90, 28),
-            BackColor = Color.FromArgb(0, 120, 215),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat
-        };
-        button.FlatAppearance.BorderColor = Color.FromArgb(0, 100, 190);
+        var button = CreateStyledButton(WidgetStrings.Get("settings_capture", _currentLang), 90, Color.FromArgb(79, 110, 247));
         button.Click += (_, _) => BeginCapture();
         return button;
     }
 
-    private Button CreateColorButton()
+    private static Button CreateStyledButton(string text, int width, Color bgColor)
     {
         var button = new Button
         {
-            Text = "Seleccionar",
-            Size = new Size(100, 28),
+            Text = text,
+            Size = new Size(width, 32),
+            BackColor = bgColor,
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Cursor = Cursors.Hand
+        };
+        button.FlatAppearance.BorderSize = 0;
+        return button;
+    }
+
+    private static Button CreateSmallButton(string text)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Size = new Size(32, 28),
             BackColor = Color.FromArgb(60, 60, 65),
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
-            Margin = new Padding(0, 0, 10, 0)
+            Cursor = Cursors.Hand,
+            Margin = new Padding(0, 0, 0, 0)
         };
-        button.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 85);
-        button.Click += OnColorButtonClick;
+        button.FlatAppearance.BorderSize = 0;
         return button;
     }
 
@@ -341,7 +457,7 @@ public sealed class SettingsForm : Form
             Size = new Size(24, 24),
             BackColor = _selectedBorderColor,
             BorderStyle = BorderStyle.FixedSingle,
-            Margin = new Padding(0, 2, 8, 0)
+            Margin = new Padding(8, 2, 8, 0)
         };
     }
 
@@ -351,7 +467,7 @@ public sealed class SettingsForm : Form
         {
             Text = ColorTranslator.ToHtml(_selectedBorderColor),
             AutoSize = true,
-            ForeColor = Color.FromArgb(160, 160, 160),
+            ForeColor = Color.FromArgb(120, 120, 120),
             Font = new Font("Segoe UI", 9),
             TextAlign = ContentAlignment.MiddleLeft
         };
@@ -390,40 +506,9 @@ public sealed class SettingsForm : Form
                 RefreshHotKeyDisplay();
             }
         };
-        checkBox.FlatAppearance.CheckedBackColor = Color.FromArgb(0, 120, 215);
-        checkBox.FlatAppearance.BorderColor = Color.FromArgb(100, 100, 105);
+        checkBox.FlatAppearance.CheckedBackColor = Color.FromArgb(79, 110, 247);
+        checkBox.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 85);
         return checkBox;
-    }
-
-    private Button CreateCancelButton()
-    {
-        var button = new Button
-        {
-            Text = WidgetStrings.Get("settings_cancel", _currentLang),
-            Size = new Size(90, 32),
-            BackColor = Color.FromArgb(80, 80, 85),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            DialogResult = DialogResult.Cancel
-        };
-        button.FlatAppearance.BorderColor = Color.FromArgb(100, 100, 105);
-        return button;
-    }
-
-    private Button CreateSaveButton()
-    {
-        var button = new Button
-        {
-            Text = WidgetStrings.Get("settings_save", _currentLang),
-            Size = new Size(90, 32),
-            BackColor = Color.FromArgb(0, 120, 215),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            DialogResult = DialogResult.OK
-        };
-        button.FlatAppearance.BorderColor = Color.FromArgb(0, 100, 190);
-        button.Click += OnSaveClick;
-        return button;
     }
 
     private void LoadCurrentSettings()
@@ -559,5 +644,135 @@ public sealed class SettingsForm : Form
         RefreshHotKeyDisplay();
         DialogResult = DialogResult.OK;
         Close();
+    }
+}
+
+public sealed class LanguagePickerForm : Form
+{
+    public string SelectedCode { get; private set; }
+    private readonly TextBox _searchBox;
+    private readonly ListBox _listBox;
+
+    public LanguagePickerForm(string currentCode)
+    {
+        SelectedCode = currentCode;
+
+        Text = "Seleccionar idioma";
+        Size = new Size(380, 460);
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        BackColor = Color.FromArgb(30, 30, 30);
+        ForeColor = Color.White;
+        Font = new Font("Segoe UI", 9);
+
+        var lblSearch = new Label
+        {
+            Text = "Buscar idioma:",
+            AutoSize = true,
+            ForeColor = Color.FromArgb(120, 120, 120),
+            Location = new Point(15, 12)
+        };
+
+        _searchBox = new TextBox
+        {
+            Location = new Point(15, 34),
+            Width = 335,
+            BackColor = Color.FromArgb(45, 45, 48),
+            ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = new Font("Segoe UI", 10)
+        };
+        _searchBox.TextChanged += (_, _) => FilterLanguages();
+
+        _listBox = new ListBox
+        {
+            Location = new Point(15, 66),
+            Width = 335,
+            Height = 290,
+            BackColor = Color.FromArgb(40, 40, 44),
+            ForeColor = Color.White,
+            BorderStyle = BorderStyle.None,
+            Font = new Font("Segoe UI", 9.5f)
+        };
+        _listBox.DoubleClick += (_, _) => SelectAndClose();
+
+        var okButton = new Button
+        {
+            Text = "Seleccionar",
+            Location = new Point(185, 366),
+            Width = 90,
+            Height = 32,
+            BackColor = Color.FromArgb(79, 110, 247),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            DialogResult = DialogResult.OK
+        };
+        okButton.FlatAppearance.BorderSize = 0;
+        okButton.Click += (_, _) => SelectAndClose();
+
+        var cancelButton = new Button
+        {
+            Text = "Cancelar",
+            Location = new Point(280, 366),
+            Width = 70,
+            Height = 32,
+            BackColor = Color.FromArgb(60, 60, 65),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            DialogResult = DialogResult.Cancel
+        };
+        cancelButton.FlatAppearance.BorderSize = 0;
+
+        Controls.AddRange(new Control[] { lblSearch, _searchBox, _listBox, okButton, cancelButton });
+        AcceptButton = okButton;
+        CancelButton = cancelButton;
+
+        LoadLanguages();
+        _searchBox.Focus();
+    }
+
+    private void LoadLanguages()
+    {
+        _listBox.Items.Clear();
+        foreach (var lang in AppLanguages.AllLanguages)
+        {
+            _listBox.Items.Add($"{lang.DisplayName} ({lang.Code})");
+        }
+
+        var idx = AppLanguages.FindAllIndex(SelectedCode);
+        if (idx >= 0) _listBox.SelectedIndex = idx;
+    }
+
+    private void FilterLanguages()
+    {
+        var query = _searchBox.Text.ToLowerInvariant().Trim();
+        _listBox.Items.Clear();
+
+        foreach (var lang in AppLanguages.AllLanguages)
+        {
+            if (string.IsNullOrEmpty(query) ||
+                lang.DisplayName.ToLowerInvariant().Contains(query) ||
+                lang.Code.ToLowerInvariant().Contains(query))
+            {
+                _listBox.Items.Add($"{lang.DisplayName} ({lang.Code})");
+            }
+        }
+
+        if (_listBox.Items.Count > 0) _listBox.SelectedIndex = 0;
+    }
+
+    private void SelectAndClose()
+    {
+        if (_listBox.SelectedItem is string selected)
+        {
+            var start = selected.LastIndexOf('(') + 1;
+            var end = selected.LastIndexOf(')');
+            if (start > 0 && end > start)
+            {
+                SelectedCode = selected[start..end];
+            }
+        }
     }
 }

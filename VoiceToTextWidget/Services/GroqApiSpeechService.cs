@@ -100,7 +100,7 @@ public sealed class GroqApiSpeechService : ISpeechRecognitionService
             return text;
 
         var apiKey = _apiKeyManager.GetKey();
-        var targetName = AppLanguages.GetTargetDisplayName(targetLanguageCode);
+        var targetName = AppLanguages.GetDisplayName(targetLanguageCode);
 
         try
         {
