@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Drawing;
+using System.Windows.Forms;
 using VoiceToTextWidget.Models;
 using VoiceToTextWidget.Services;
 
@@ -35,35 +37,50 @@ public sealed class LocalModelForm : Form
         _settingsService = settingsService;
 
         Text = "Configurar Modelo Local - Whisper";
-        Size = new Size(500, 400);
+        Size = new Size(520, 440);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        BackColor = Color.FromArgb(30, 30, 30);
-        ForeColor = Color.White;
-        Font = new Font("Segoe UI", 9);
+        BackColor = Color.FromArgb(26, 26, 28);
+        ForeColor = Color.FromArgb(220, 220, 225);
+        Font = new Font("Segoe UI", 9.5f);
 
-        var mainPanel = new TableLayoutPanel
+        var mainPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(24),
-            ColumnCount = 1,
-            RowCount = 9,
-            BackColor = Color.Transparent,
             AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            BackColor = Color.Transparent
         };
-        for (int i = 0; i < 9; i++)
-            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        mainPanel.RowStyles[8] = new RowStyle(SizeType.Percent, 100);
+
+        var card = new Panel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = Color.FromArgb(34, 34, 38),
+            Padding = new Padding(16),
+            MinimumSize = new Size(440, 0)
+        };
+
+        var cardContent = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            BackColor = Color.Transparent
+        };
 
         var lblTitle = new Label
         {
             Text = "Modelo de transcripcion local",
-            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 12f, FontStyle.Bold),
             AutoSize = true,
-            ForeColor = Color.White,
+            ForeColor = Color.FromArgb(220, 220, 225),
             Margin = new Padding(0, 0, 0, 8)
         };
 
@@ -71,19 +88,23 @@ public sealed class LocalModelForm : Form
         {
             Text = "Modelo:",
             AutoSize = true,
-            ForeColor = Color.FromArgb(120, 120, 120),
+            ForeColor = Color.FromArgb(138, 138, 144),
+            Font = new Font("Segoe UI", 9.5f),
             Margin = new Padding(0, 0, 0, 4)
         };
 
         _modelCombo = new ComboBox
         {
-            Width = 440,
+            Width = 400,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = Color.FromArgb(45, 45, 48),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Standard,
+            BackColor = Color.FromArgb(45, 45, 50),
+            ForeColor = Color.FromArgb(220, 220, 225),
+            FlatStyle = FlatStyle.Flat,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 22,
             Margin = new Padding(0, 0, 0, 4)
         };
+        _modelCombo.DrawItem += OnComboDrawItem;
         foreach (var model in Models)
         {
             _modelCombo.Items.Add(model.DisplayName);
@@ -98,74 +119,95 @@ public sealed class LocalModelForm : Form
         {
             Text = "",
             AutoSize = true,
-            ForeColor = Color.FromArgb(120, 120, 120),
+            ForeColor = Color.FromArgb(138, 138, 144),
+            Font = new Font("Segoe UI", 9f),
             Margin = new Padding(0, 0, 0, 8)
         };
 
         _gpuCheckbox = new CheckBox
         {
             Text = "Usar aceleracion GPU (recomendado)",
-            Width = 440,
+            Width = 400,
             Checked = _settingsService.Settings.UseGpuAcceleration,
-            ForeColor = Color.White,
+            ForeColor = Color.FromArgb(200, 200, 210),
+            Font = new Font("Segoe UI", 9.5f),
             AutoSize = true,
-            Margin = new Padding(0, 0, 0, 8)
+            Margin = new Padding(0, 0, 0, 8),
+            FlatStyle = FlatStyle.Flat
         };
+        _gpuCheckbox.FlatAppearance.CheckedBackColor = Color.FromArgb(120, 170, 255);
 
         _statusLabel = new Label
         {
             Text = "Estado: Verificando...",
             AutoSize = true,
-            ForeColor = Color.FromArgb(79, 110, 247),
+            ForeColor = Color.FromArgb(120, 170, 255),
+            Font = new Font("Segoe UI", 9.5f),
             Margin = new Padding(0, 0, 0, 12)
         };
 
-        var buttonPanel = new FlowLayoutPanel
+        var buttonRow = new FlowLayoutPanel
         {
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            Margin = new Padding(0, 0, 0, 8)
+            BackColor = Color.Transparent
         };
 
-        _downloadButton = CreateStyledButton("Descargar modelo", 150, Color.FromArgb(79, 110, 247));
+        _downloadButton = CreateStyledButton("Descargar modelo", 150, Color.FromArgb(120, 170, 255));
         _downloadButton.Click += OnDownloadClick;
-        _deleteButton = CreateStyledButton("Eliminar modelo", 150, Color.FromArgb(180, 50, 50));
+        _deleteButton = CreateStyledButton("Eliminar modelo", 150, Color.FromArgb(208, 64, 64));
         _deleteButton.Click += OnDeleteClick;
         _deleteButton.Enabled = false;
-        buttonPanel.Controls.Add(_downloadButton);
-        buttonPanel.Controls.Add(_deleteButton);
+        buttonRow.Controls.Add(_downloadButton);
+        buttonRow.Controls.Add(_deleteButton);
+
+        cardContent.Controls.Add(lblTitle);
+        cardContent.Controls.Add(lblModel);
+        cardContent.Controls.Add(_modelCombo);
+        cardContent.Controls.Add(_modelSizeLabel);
+        cardContent.Controls.Add(_gpuCheckbox);
+        cardContent.Controls.Add(_statusLabel);
+        cardContent.Controls.Add(buttonRow);
+        card.Controls.Add(cardContent);
+        mainPanel.Controls.Add(card);
 
         var bottomPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,
             FlowDirection = FlowDirection.RightToLeft,
             AutoSize = true,
-            Padding = new Padding(0, 12, 0, 0)
+            Margin = new Padding(0, 8, 0, 0)
         };
 
-        _okButton = CreateStyledButton("Guardar", 90, Color.FromArgb(79, 110, 247));
+        _okButton = CreateStyledButton("Guardar", 90, Color.FromArgb(120, 170, 255));
         _okButton.DialogResult = DialogResult.OK;
         _cancelButton = CreateStyledButton("Cancelar", 90, Color.FromArgb(60, 60, 65));
         _cancelButton.DialogResult = DialogResult.Cancel;
-        bottomPanel.Controls.Add(_okButton);
         bottomPanel.Controls.Add(_cancelButton);
-
-        mainPanel.Controls.Add(lblTitle, 0, 0);
-        mainPanel.Controls.Add(lblModel, 0, 1);
-        mainPanel.Controls.Add(_modelCombo, 0, 2);
-        mainPanel.Controls.Add(_modelSizeLabel, 0, 3);
-        mainPanel.Controls.Add(_gpuCheckbox, 0, 4);
-        mainPanel.Controls.Add(_statusLabel, 0, 5);
-        mainPanel.Controls.Add(buttonPanel, 0, 6);
-        mainPanel.Controls.Add(new Panel { Height = 20 }, 0, 7);
-        mainPanel.Controls.Add(bottomPanel, 0, 8);
+        bottomPanel.Controls.Add(_okButton);
+        mainPanel.Controls.Add(bottomPanel);
 
         Controls.Add(mainPanel);
         AcceptButton = _okButton;
         CancelButton = _cancelButton;
 
         UpdateModelStatus();
+    }
+
+    private static void OnComboDrawItem(object? sender, DrawItemEventArgs e)
+    {
+        if (e.Index < 0 || sender is not ComboBox combo) return;
+        string text = combo.Items[e.Index]?.ToString() ?? "";
+        bool isSelected = (e.State & DrawItemState.Selected) != 0;
+        var bgColor = isSelected ? Color.FromArgb(58, 58, 64) : Color.FromArgb(45, 45, 50);
+        var textColor = isSelected ? Color.White : Color.FromArgb(210, 210, 218);
+
+        using var bgBrush = new SolidBrush(bgColor);
+        e.Graphics.FillRectangle(bgBrush, e.Bounds);
+        using var textBrush = new SolidBrush(textColor);
+        e.Graphics.DrawString(text, combo.Font, textBrush, e.Bounds.Left + 6, e.Bounds.Top + 3);
+        e.DrawFocusRectangle();
     }
 
     private static Button CreateStyledButton(string text, int width, Color bgColor)

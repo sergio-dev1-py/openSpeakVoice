@@ -130,10 +130,11 @@ public sealed class SettingsService
         Save();
     }
 
-    public void UpdateAppearance(string borderColor, bool multicolor)
+    public void UpdateAppearance(string borderColor, bool multicolor, int borderOpacity)
     {
         _settings.BorderColor = borderColor;
         _settings.MulticolorBorder = multicolor;
+        _settings.BorderOpacity = borderOpacity;
         Save();
     }
 

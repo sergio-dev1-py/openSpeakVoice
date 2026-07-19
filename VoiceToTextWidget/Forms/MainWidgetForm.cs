@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using Microsoft.Win32;
 using VoiceToTextWidget.Models;
 using VoiceToTextWidget.Native;
 using VoiceToTextWidget.Services;
@@ -38,7 +39,11 @@ public sealed class MainWidgetForm : Form
     private int _animTick;
     private float _colorHue = 0f;
 
-    private const int WidgetWidth = 140;
+    private readonly float[] _waveformBuffer = new float[12];
+    private float _currentAmplitude;
+    private Icon? _appIcon;
+
+    private const int WidgetWidth = 63;
     private const int WidgetHeight = 27;
     private const int CornerRadius = 10;
     private const int BorderWidth = 2;
@@ -83,8 +88,6 @@ public sealed class MainWidgetForm : Form
         _animationTimer.Tick += OnAnimationTick;
         _animationTimer.Start();
 
-        Deactivate += OnDeactivate;
-
         RestorePosition();
         UpdateUI();
     }
@@ -99,13 +102,20 @@ public sealed class MainWidgetForm : Form
         Size = new Size(WidgetWidth, WidgetHeight);
         DoubleBuffered = true;
         BackColor = ColorIdle;
+
+        var icoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "app.ico");
+        if (File.Exists(icoPath))
+        {
+            _appIcon = new Icon(icoPath, 32, 32);
+            Icon = (Icon)_appIcon.Clone();
+        }
     }
 
     private void InitTrayIcon()
     {
         _trayIcon = new NotifyIcon
         {
-            Icon = CreateTrayIcon(),
+            Icon = CreateAdaptiveTrayIcon(),
             Visible = false,
             Text = "VoiceToText"
         };
@@ -136,25 +146,46 @@ public sealed class MainWidgetForm : Form
         _trayIcon.DoubleClick += (_, _) => ShowWidget();
     }
 
-    private static Icon CreateTrayIcon()
+    private static Icon CreateAdaptiveTrayIcon()
     {
+        bool isDarkTheme = true;
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            if (key?.GetValue("AppsUseLightTheme") is int val)
+                isDarkTheme = val == 0;
+        }
+        catch { }
+
+        Color bgColor = isDarkTheme ? Color.White : Color.FromArgb(34, 34, 38);
+        Color micColor = isDarkTheme ? Color.FromArgb(34, 34, 38) : Color.White;
+        Color borderColor = isDarkTheme ? Color.FromArgb(180, 180, 180) : Color.FromArgb(80, 80, 85);
+
         using var bmp = new Bitmap(16, 16);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Color.Transparent);
 
-        using var pen = new Pen(Color.White, 1.5f);
-        using var brush = new SolidBrush(Color.White);
+        using var bgBrush = new SolidBrush(bgColor);
+        using var bgPath = GetRoundedRectPath(new Rectangle(1, 1, 14, 14), 4);
+        g.FillPath(bgBrush, bgPath);
 
-        g.FillRoundedRect(brush, 6, 1, 4, 8, 2);
+        using var borderPen = new Pen(borderColor, 1f);
+        g.DrawPath(borderPen, bgPath);
+
+        using var pen = new Pen(micColor, 1.5f);
+        using var brush = new SolidBrush(micColor);
+
+        g.FillRoundedRect(brush, 6, 3, 4, 8, 2);
 
         using var arcPath = new GraphicsPath();
-        arcPath.AddArc(4, 0, 8, 6, 180, 180);
+        arcPath.AddArc(4, 2, 8, 6, 180, 180);
         arcPath.CloseFigure();
         g.DrawPath(pen, arcPath);
 
-        g.DrawLine(pen, 8, 9, 8, 12);
-        g.DrawLine(pen, 5, 12, 11, 12);
+        g.DrawLine(pen, 8, 11, 8, 14);
+        g.DrawLine(pen, 5, 14, 11, 14);
 
         IntPtr hIcon = bmp.GetHicon();
         return Icon.FromHandle(hIcon);
@@ -197,7 +228,8 @@ public sealed class MainWidgetForm : Form
         base.OnPaint(e);
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.CompositingQuality = CompositingQuality.HighQuality;
 
         var bgColor = GetAnimatedBackground();
         var borderColor = GetBorderColor();
@@ -215,8 +247,11 @@ public sealed class MainWidgetForm : Form
 
         Region = new Region(outerPath);
 
+        using var overlayPen = new Pen(borderColor, 2f);
+        g.DrawPath(overlayPen, outerPath);
+
         DrawMicIcon(g, innerRect);
-        DrawStatusText(g, innerRect);
+        DrawWaveform(g, innerRect);
     }
 
     private Color GetAnimatedBackground()
@@ -235,7 +270,7 @@ public sealed class MainWidgetForm : Form
             return HslToRgb(_colorHue, 1.0f, 0.55f);
         }
 
-        return userColor;
+        return Color.FromArgb(_settingsService.Settings.BorderOpacity, userColor.R, userColor.G, userColor.B);
     }
 
     private static Color HslToRgb(float h, float s, float l)
@@ -261,77 +296,117 @@ public sealed class MainWidgetForm : Form
 
     private void DrawMicIcon(Graphics g, Rectangle bounds)
     {
-        Color micColor = _currentState != AppState.Idle
-            ? GetBorderColor()
-            : Color.FromArgb(140, 140, 140);
-
         int iconBoxSize = 20;
         int cx = bounds.Left + 5 + iconBoxSize / 2;
         int cy = bounds.Top + (bounds.Height - iconBoxSize) / 2;
 
-        using var boxBrush = new SolidBrush(Color.FromArgb(62, 62, 66));
+        Color boxColor = _currentState == AppState.Idle
+            ? Color.White
+            : ColorTranslator.FromHtml(_settingsService.Settings.BorderColor);
+        using var boxBrush = new SolidBrush(boxColor);
         using var boxPath = GetRoundedRectPath(
             new Rectangle(cx - iconBoxSize / 2, cy, iconBoxSize, iconBoxSize), 5);
         g.FillPath(boxBrush, boxPath);
 
-        using var pen = new Pen(micColor, 1.5f);
-        using var brush = new SolidBrush(micColor);
+        if (_appIcon != null)
+        {
+            using var iconBitmap = _appIcon.ToBitmap();
+            g.DrawImage(iconBitmap, new Rectangle(cx - 9, cy + 1, 18, 18));
+        }
+        else
+        {
+            Color micColor = Color.FromArgb(200, 200, 200);
+            using var pen = new Pen(micColor, 1.5f);
+            using var brush = new SolidBrush(micColor);
 
-        int micCx = cx;
-        int micCy = cy + iconBoxSize / 2;
+            int micCx = cx;
+            int micCy = cy + iconBoxSize / 2;
 
-        g.FillRoundedRect(brush, micCx - 3, micCy - 5, 6, 9, 3);
+            g.FillRoundedRect(brush, micCx - 3, micCy - 5, 6, 9, 3);
 
-        using var arcPath = new GraphicsPath();
-        arcPath.AddArc(micCx - 5, micCy - 8, 10, 8, 180, 180);
-        arcPath.CloseFigure();
-        g.DrawPath(pen, arcPath);
+            using var arcPath = new GraphicsPath();
+            arcPath.AddArc(micCx - 5, micCy - 8, 10, 8, 180, 180);
+            arcPath.CloseFigure();
+            g.DrawPath(pen, arcPath);
 
-        g.DrawLine(pen, micCx, micCy + 1, micCx, micCy + 4);
-        g.DrawLine(new Pen(micColor, 1.2f), micCx - 3, micCy + 4, micCx + 3, micCy + 4);
+            g.DrawLine(pen, micCx, micCy + 1, micCx, micCy + 4);
+            g.DrawLine(new Pen(micColor, 1.2f), micCx - 3, micCy + 4, micCx + 3, micCy + 4);
+        }
     }
 
-    private void DrawStatusText(Graphics g, Rectangle bounds)
+    private void DrawWaveform(Graphics g, Rectangle bounds)
     {
-        string text;
-        Color textColor;
+        int barCount = _waveformBuffer.Length;
+        int barWidth = 2;
+        int gap = 2;
+        int micAreaRight = bounds.Left + 28;
+        int availableWidth = bounds.Right - micAreaRight;
+        int totalBarsWidth = barCount * (barWidth + gap);
+        int startX = micAreaRight + Math.Max(0, (availableWidth - totalBarsWidth) / 2);
+        int centerY = bounds.Top + bounds.Height / 2;
+        int maxBarHeight = 8;
 
-        switch (_currentState)
+        if (_currentState == AppState.Transcribing)
         {
-            case AppState.Listening:
-                text = WidgetStrings.Get("status_listening", CurrentLang);
-                textColor = Color.FromArgb(255, 255, 255);
-                break;
-            case AppState.Transcribing:
-                var dots = new string('.', (_animFrame % 3) + 1);
-                var isTranslating = _settingsService.Settings.Mode == "translation";
-                var baseText = isTranslating
-                    ? WidgetStrings.Get("status_translating", CurrentLang)
-                    : WidgetStrings.Get("status_transcribing", CurrentLang);
-                text = baseText + dots;
-                textColor = Color.FromArgb(255, 255, 255);
-                break;
-            default:
-                text = WidgetStrings.Get("status_ready", CurrentLang);
-                textColor = Color.FromArgb(140, 140, 140);
-                break;
+            DrawSpinner(g, bounds);
+            return;
         }
 
-        using var font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-        using var brush = new SolidBrush(textColor);
-        var textSize = g.MeasureString(text, font);
-        var textX = bounds.Left + 28;
-        var textY = (bounds.Top + (bounds.Height - textSize.Height) / 2);
-        g.DrawString(text, font, brush, textX, textY);
+        float amp = Math.Max(_currentAmplitude, 0.3f);
+
+        Color barColor;
+        if (_currentState == AppState.Listening)
+        {
+            barColor = GetBorderColor();
+        }
+        else
+        {
+            int alpha = _pulseAlpha;
+            barColor = Color.FromArgb(Math.Clamp(alpha, 60, 200), 200, 200, 200);
+        }
+        using var pen = new Pen(barColor, barWidth);
+
+        float mid = (barCount - 1) / 2f;
+        for (int i = 0; i < barCount; i++)
+        {
+            float dist = Math.Abs(i - mid) / mid;
+            float weight = (float)Math.Cos(dist * Math.PI / 3);
+            float barAmp = amp * weight;
+            int h = Math.Max(1, (int)(barAmp * maxBarHeight));
+            int x = startX + i * (barWidth + gap);
+            g.DrawLine(pen, x, centerY - h / 2, x, centerY + h / 2);
+        }
+    }
+
+    private void DrawSpinner(Graphics g, Rectangle bounds)
+    {
+        int size = 12;
+        int micAreaRight = bounds.Left + 28;
+        int availableWidth = bounds.Right - micAreaRight;
+        int centerX = micAreaRight + availableWidth / 2;
+        int centerY = bounds.Top + bounds.Height / 2;
+
+        var rect = new Rectangle(centerX - size / 2, centerY - size / 2, size, size);
+        float startAngle = (_animFrame * 15f) % 360;
+
+        using var pen = new Pen(Color.FromArgb(200, 200, 200), 2f);
+        g.DrawArc(pen, rect, startAngle, 270);
+
+        float endAngle = (startAngle + 270) * MathF.PI / 180f;
+        float dotX = centerX + (size / 2f) * MathF.Cos(endAngle);
+        float dotY = centerY + (size / 2f) * MathF.Sin(endAngle);
+        g.FillEllipse(Brushes.White, dotX - 1.5f, dotY - 1.5f, 3, 3);
     }
 
     private void OnAnimationTick(object? sender, EventArgs e)
     {
+        bool needsInvalidate = false;
+
         if (_settingsService.Settings.MulticolorBorder)
         {
             _colorHue += 1.5f;
             if (_colorHue >= 360f) _colorHue -= 360f;
-            Invalidate();
+            needsInvalidate = true;
         }
 
         if (_currentState == AppState.Listening)
@@ -339,18 +414,28 @@ public sealed class MainWidgetForm : Form
             _pulseAlpha += 8 * _pulseDirection;
             if (_pulseAlpha >= 255) { _pulseAlpha = 255; _pulseDirection = -1; }
             if (_pulseAlpha <= 140) { _pulseAlpha = 140; _pulseDirection = 1; }
-            Invalidate();
+
+            _currentAmplitude *= 0.92f;
+            if (_currentAmplitude < 0.01f) _currentAmplitude = 0f;
+            needsInvalidate = true;
         }
         else if (_currentState == AppState.Transcribing)
         {
             _animTick++;
-            if (_animTick >= 8)
+            if (_animTick >= 2)
             {
                 _animTick = 0;
                 _animFrame++;
-                Invalidate();
+                needsInvalidate = true;
             }
         }
+        else if (_currentState == AppState.Idle)
+        {
+            _currentAmplitude = 0.02f;
+            needsInvalidate = true;
+        }
+
+        if (needsInvalidate) Invalidate();
     }
 
     private ContextMenuStrip SetupContextMenu()
@@ -487,19 +572,7 @@ public sealed class MainWidgetForm : Form
                 Handle,
                 WinApi.HWND_TOPMOST,
                 0, 0, 0, 0,
-                WinApi.SWP_NOMOVE | WinApi.SWP_NOSIZE | WinApi.SWP_NOACTIVATE | WinApi.SWP_SHOWWINDOW);
-        }
-    }
-
-    private void OnDeactivate(object? sender, EventArgs e)
-    {
-        if (IsHandleCreated && Visible)
-        {
-            WinApi.SetWindowPos(
-                Handle,
-                WinApi.HWND_TOPMOST,
-                0, 0, 0, 0,
-                WinApi.SWP_NOMOVE | WinApi.SWP_NOSIZE | WinApi.SWP_NOACTIVATE | WinApi.SWP_SHOWWINDOW);
+                WinApi.SWP_NOMOVE | WinApi.SWP_NOSIZE | WinApi.SWP_NOACTIVATE);
         }
     }
 
@@ -649,6 +722,18 @@ public sealed class MainWidgetForm : Form
 
     private void OnAudioChunkCaptured(byte[] buffer, int bytesRecorded)
     {
+        if (_currentState != AppState.Listening || bytesRecorded < 2) return;
+
+        float peak = 0f;
+        int samples = bytesRecorded / 2;
+        for (int i = 0; i < samples; i++)
+        {
+            short sample = (short)(buffer[i * 2] | (buffer[i * 2 + 1] << 8));
+            float normalized = Math.Abs(sample / 32768f);
+            if (normalized > peak) peak = normalized;
+        }
+
+        _currentAmplitude = Math.Min(peak * 3.5f, 1f);
     }
 
     private void UpdateUI()
@@ -662,138 +747,210 @@ public sealed class MainWidgetForm : Form
 
     private void ShowSettingsDialog()
     {
-        using var settingsForm = new SettingsForm(_settingsService.Settings);
-        if (settingsForm.ShowDialog(this) == DialogResult.OK)
+        _topMostTimer.Stop();
+        try
         {
-            _settingsService.UpdateHotKey(settingsForm.HotKeyValue, settingsForm.SelectedModifiers);
-            _settingsService.UpdateAppearance(settingsForm.BorderColorHex, settingsForm.MulticolorBorder);
-            _settingsService.UpdateAppLanguage(settingsForm.SelectedLanguage);
-            _settingsService.UpdateMode(settingsForm.SelectedMode);
-            _settingsService.UpdateTargetLanguage(settingsForm.SelectedTargetLanguage);
-
-            Invalidate();
-            _hotKeyService?.Reregister();
-            RefreshContextMenu();
-
-            if (_hotKeyService != null && !_hotKeyService.IsRegistered)
+            using var settingsForm = new SettingsForm(_settingsService.Settings);
+            if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                ShowError("No se pudo registrar el nuevo atajo de teclado.");
+                _settingsService.UpdateHotKey(settingsForm.HotKeyValue, settingsForm.SelectedModifiers);
+                _settingsService.UpdateAppearance(settingsForm.BorderColorHex, settingsForm.MulticolorBorder, settingsForm.BorderOpacity);
+                _settingsService.UpdateAppLanguage(settingsForm.SelectedLanguage);
+                _settingsService.UpdateMode(settingsForm.SelectedMode);
+                _settingsService.UpdateTargetLanguage(settingsForm.SelectedTargetLanguage);
+
+                Invalidate();
+                _hotKeyService?.Reregister();
+                RefreshContextMenu();
+
+                if (_hotKeyService != null && !_hotKeyService.IsRegistered)
+                {
+                    ShowError("No se pudo registrar el nuevo atajo de teclado.");
+                }
             }
+        }
+        finally
+        {
+            _topMostTimer.Start();
         }
     }
 
     private void ShowApiKeyDialog()
     {
-        var s = _settingsService.Settings;
-        var (used1, total1, used2, total2) = _apiKeyManager.GetUsageStatus();
-
-        var masked1 = string.IsNullOrEmpty(s.ApiKey1) ? "(no configurada)" : $"****{s.ApiKey1[^4..]}";
-        var masked2 = string.IsNullOrEmpty(s.ApiKey2) ? "(no configurada)" : $"****{s.ApiKey2[^4..]}";
-
-        using var inputForm = new Form
+        _topMostTimer.Stop();
+        try
         {
-            Text = "Groq API Keys (Dual Mode)",
-            Size = new Size(460, 340),
-            StartPosition = FormStartPosition.CenterParent,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            MaximizeBox = false,
-            MinimizeBox = false,
-            BackColor = Color.FromArgb(30, 30, 30)
-        };
+            var s = _settingsService.Settings;
+            var (used1, total1, used2, total2) = _apiKeyManager.GetUsageStatus();
 
-        var lblTitle = new Label
-        {
-            Text = "Obtén keys gratis en: https://console.groq.com",
-            AutoSize = true,
-            Location = new Point(15, 10),
-            ForeColor = Color.FromArgb(120, 180, 255),
-            BackColor = Color.Transparent
-        };
+            var masked1 = string.IsNullOrEmpty(s.ApiKey1) ? "(no configurada)" : $"****{s.ApiKey1[^4..]}";
+            var masked2 = string.IsNullOrEmpty(s.ApiKey2) ? "(no configurada)" : $"****{s.ApiKey2[^4..]}";
 
-        var lblKey1Status = new Label
-        {
-            Text = $"Key 1: {masked1}  |  Usados: {used1}/{total1}",
-            AutoSize = true,
-            Location = new Point(15, 38),
-            ForeColor = Color.White,
-            BackColor = Color.Transparent
-        };
+            using var inputForm = new Form
+            {
+                Text = "Groq API Keys (Dual Mode)",
+                Size = new Size(460, 340),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false,
+                BackColor = Color.FromArgb(26, 26, 28),
+                ForeColor = Color.FromArgb(220, 220, 225),
+                Font = new Font("Segoe UI", 9.5f)
+            };
 
-        var txtKey1 = new TextBox
-        {
-            Location = new Point(15, 60),
-            Width = 415,
-            UseSystemPasswordChar = true,
-            BackColor = Color.FromArgb(45, 45, 48),
-            ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle,
-            Text = s.ApiKey1
-        };
+            var mainPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(24),
+                ColumnCount = 1,
+                RowCount = 5,
+                BackColor = Color.Transparent
+            };
 
-        var lblKey2Status = new Label
-        {
-            Text = $"Key 2: {masked2}  |  Usados: {used2}/{total2}",
-            AutoSize = true,
-            Location = new Point(15, 90),
-            ForeColor = Color.White,
-            BackColor = Color.Transparent
-        };
+            var title = new Label
+            {
+                Text = "Configurar API Keys de Groq",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(220, 220, 225),
+                Margin = new Padding(0, 0, 0, 4)
+            };
 
-        var txtKey2 = new TextBox
-        {
-            Location = new Point(15, 112),
-            Width = 415,
-            UseSystemPasswordChar = true,
-            BackColor = Color.FromArgb(45, 45, 48),
-            ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle,
-            Text = s.ApiKey2
-        };
+            var subtitle = new Label
+            {
+                Text = "Obtén keys gratis en: https://console.groq.com",
+                AutoSize = true,
+                ForeColor = Color.FromArgb(120, 170, 255),
+                Font = new Font("Segoe UI", 8.5f),
+                Margin = new Padding(0, 0, 0, 12)
+            };
 
-        var lblInfo = new Label
-        {
-            Text = "Las keys se guardan automáticamente.\nRotación automática al llegar a 19 req/min por key.",
-            AutoSize = true,
-            Location = new Point(15, 145),
-            ForeColor = Color.FromArgb(160, 160, 160),
-            BackColor = Color.Transparent
-        };
+            var card = new Panel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BackColor = Color.FromArgb(34, 34, 38),
+                Padding = new Padding(16)
+            };
 
-        var okButton = new Button
-        {
-            Text = "Guardar",
-            Location = new Point(250, 210),
-            Width = 90,
-            Height = 40,
-            BackColor = Color.FromArgb(70, 130, 180),
-            ForeColor = Color.White,
-            DialogResult = DialogResult.OK
-        };
+            var cardFlow = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                BackColor = Color.Transparent
+            };
 
-        var cancelButton = new Button
-        {
-            Text = "Cancelar",
-            Location = new Point(345, 210),
-            Width = 90,
-            Height = 40,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White,
-            DialogResult = DialogResult.Cancel
-        };
+            var lblKey1Status = new Label
+            {
+                Text = $"Key 1: {masked1}  |  Usados: {used1}/{total1}",
+                AutoSize = true,
+                ForeColor = Color.FromArgb(200, 200, 210),
+                Margin = new Padding(0, 0, 0, 4)
+            };
 
-        inputForm.Controls.AddRange(new Control[]
-        {
-            lblTitle, lblKey1Status, txtKey1,
-            lblKey2Status, txtKey2, lblInfo,
-            okButton, cancelButton
-        });
-        inputForm.AcceptButton = okButton;
-        inputForm.CancelButton = cancelButton;
+            var txtKey1 = new TextBox
+            {
+                Width = 370,
+                UseSystemPasswordChar = true,
+                BackColor = Color.FromArgb(45, 45, 50),
+                ForeColor = Color.FromArgb(220, 220, 225),
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Segoe UI", 9.5f),
+                Text = s.ApiKey1,
+                Margin = new Padding(0, 0, 0, 12)
+            };
 
-        if (inputForm.ShowDialog(this) == DialogResult.OK)
+            var lblKey2Status = new Label
+            {
+                Text = $"Key 2: {masked2}  |  Usados: {used2}/{total2}",
+                AutoSize = true,
+                ForeColor = Color.FromArgb(200, 200, 210),
+                Margin = new Padding(0, 0, 0, 4)
+            };
+
+            var txtKey2 = new TextBox
+            {
+                Width = 370,
+                UseSystemPasswordChar = true,
+                BackColor = Color.FromArgb(45, 45, 50),
+                ForeColor = Color.FromArgb(220, 220, 225),
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Segoe UI", 9.5f),
+                Text = s.ApiKey2,
+                Margin = new Padding(0, 0, 0, 6)
+            };
+
+            var lblInfo = new Label
+            {
+                Text = "Las keys se guardan automaticamente.\nRotacion automatica al llegar a 19 req/min por key.",
+                AutoSize = true,
+                ForeColor = Color.FromArgb(120, 120, 125),
+                Font = new Font("Segoe UI", 8.5f)
+            };
+
+            cardFlow.Controls.Add(lblKey1Status);
+            cardFlow.Controls.Add(txtKey1);
+            cardFlow.Controls.Add(lblKey2Status);
+            cardFlow.Controls.Add(txtKey2);
+            cardFlow.Controls.Add(lblInfo);
+            card.Controls.Add(cardFlow);
+
+            var okButton = new Button
+            {
+                Text = "Guardar",
+                Size = new Size(90, 32),
+                BackColor = Color.FromArgb(120, 170, 255),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                DialogResult = DialogResult.OK,
+                Cursor = Cursors.Hand
+            };
+            okButton.FlatAppearance.BorderSize = 0;
+
+            var cancelButton = new Button
+            {
+                Text = "Cancelar",
+                Size = new Size(90, 32),
+                BackColor = Color.FromArgb(60, 60, 65),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                DialogResult = DialogResult.Cancel,
+                Cursor = Cursors.Hand
+            };
+            cancelButton.FlatAppearance.BorderSize = 0;
+
+            var buttonPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                FlowDirection = FlowDirection.RightToLeft,
+                AutoSize = true,
+                Margin = new Padding(0, 12, 0, 0)
+            };
+            buttonPanel.Controls.Add(cancelButton);
+            buttonPanel.Controls.Add(okButton);
+
+            mainPanel.Controls.Add(title, 0, 0);
+            mainPanel.Controls.Add(subtitle, 0, 1);
+            mainPanel.Controls.Add(card, 0, 2);
+            mainPanel.Controls.Add(new Panel { Height = 0 }, 0, 3);
+            mainPanel.Controls.Add(buttonPanel, 0, 4);
+
+            inputForm.Controls.Add(mainPanel);
+            inputForm.AcceptButton = okButton;
+            inputForm.CancelButton = cancelButton;
+
+            if (inputForm.ShowDialog(this) == DialogResult.OK)
+            {
+                _settingsService.UpdateApiKey1(txtKey1.Text.Trim());
+                _settingsService.UpdateApiKey2(txtKey2.Text.Trim());
+            }
+        }
+        finally
         {
-            _settingsService.UpdateApiKey1(txtKey1.Text.Trim());
-            _settingsService.UpdateApiKey2(txtKey2.Text.Trim());
+            _topMostTimer.Start();
         }
     }
 
@@ -976,7 +1133,6 @@ public sealed class MainWidgetForm : Form
         _animationTimer.Stop();
         _animationTimer.Dispose();
         _audioCapture.AudioChunkCaptured -= OnAudioChunkCaptured;
-        Deactivate -= OnDeactivate;
         if (_hotKeyService != null)
         {
             _hotKeyService.HotKeyPressed -= OnHotKeyPressed;
@@ -1003,29 +1159,58 @@ public sealed class MainWidgetForm : Form
 
 internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
 {
+    private static readonly Color BgColor = Color.FromArgb(26, 26, 28);
+    private static readonly Color HoverColor = Color.FromArgb(58, 58, 64);
+    private static readonly Color BorderColor = Color.FromArgb(40, 40, 44);
+    private static readonly Color SeparatorColor = Color.FromArgb(51, 51, 56);
+    private static readonly Color TextColor = Color.FromArgb(210, 210, 218);
+    private static readonly Color CheckColor = Color.FromArgb(120, 170, 255);
+
     protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
     {
-        using var brush = new SolidBrush(e.Item.Selected ? Color.FromArgb(60, 60, 60) : Color.FromArgb(30, 30, 30));
-        e.Graphics.FillRectangle(brush, new Rectangle(Point.Empty, e.Item.Size));
+        var color = e.Item.Selected ? HoverColor : BgColor;
+        using var brush = new SolidBrush(color);
+        e.Graphics.FillRectangle(brush, new Rectangle(0, 0, e.Item.Width, e.Item.Height));
+    }
+
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+    {
+        e.TextColor = e.Item.Selected ? Color.White : TextColor;
+        base.OnRenderItemText(e);
     }
 
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
     {
-        using var brush = new SolidBrush(Color.FromArgb(30, 30, 30));
+        using var brush = new SolidBrush(BgColor);
         e.Graphics.FillRectangle(brush, e.AffectedBounds);
     }
 
     protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
     {
-        using var pen = new Pen(Color.FromArgb(50, 50, 50));
         var y = e.Item.Height / 2;
-        e.Graphics.DrawLine(pen, 0, y, e.Item.Width, y);
+        using var pen = new Pen(SeparatorColor);
+        e.Graphics.DrawLine(pen, 4, y, e.Item.Width - 8, y);
     }
 
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
     {
-        using var pen = new Pen(Color.FromArgb(30, 30, 30));
-        e.Graphics.DrawRectangle(pen, 0, 0, e.AffectedBounds.Width - 1, e.AffectedBounds.Height - 1);
+        using var pen = new Pen(BorderColor);
+        e.Graphics.DrawRectangle(pen, new Rectangle(0, 0, e.AffectedBounds.Width - 1, e.AffectedBounds.Height - 1));
+    }
+
+    protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+    {
+        e.ArrowColor = Color.FromArgb(140, 140, 145);
+        base.OnRenderArrow(e);
+    }
+
+    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+    {
+        using var brush = new SolidBrush(CheckColor);
+        e.Graphics.FillRectangle(brush, new Rectangle(2, 2, 14, 14));
+        using var pen = new Pen(Color.White, 1.5f);
+        e.Graphics.DrawLine(pen, 4, 9, 7, 12);
+        e.Graphics.DrawLine(pen, 7, 12, 13, 5);
     }
 }
 

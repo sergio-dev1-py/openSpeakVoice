@@ -2,6 +2,15 @@ using System.Runtime.InteropServices;
 
 namespace VoiceToTextWidget.Native;
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct BLENDFUNCTION
+{
+    public byte BlendOp;
+    public byte BlendFlags;
+    public byte SourceConstantAlpha;
+    public byte AlphaFormat;
+}
+
 internal static class WinApi
 {
     public const int WM_HOTKEY = 0x0312;
@@ -18,6 +27,10 @@ internal static class WinApi
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
+
+    public const uint ULW_ALPHA = 0x00000002;
+    public const int AC_SRC_OVER = 0x00;
+    public const int AC_SRC_ALPHA = 0x01;
 
     public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -60,4 +73,31 @@ internal static class WinApi
     
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool UpdateLayeredWindow(
+        IntPtr hwnd, IntPtr hdcDst, ref Point pptDst,
+        ref Size psize, IntPtr hdcSrc, ref Point pptSrc,
+        uint crKey, ref BLENDFUNCTION pblend, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateCompatibleDC(IntPtr hDC);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteDC(IntPtr hDC);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteObject(IntPtr hObject);
 }

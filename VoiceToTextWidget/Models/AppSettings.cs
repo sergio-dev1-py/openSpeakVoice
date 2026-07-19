@@ -37,6 +37,8 @@ public class AppSettings
 
     public string BorderColor { get; set; } = "#FFFFFF";
 
+    public int BorderOpacity { get; set; } = 255;
+
     public bool MulticolorBorder { get; set; } = false;
 
     public int WidgetPosX { get; set; } = 100;
