@@ -1,3 +1,4 @@
+# .NET / legacy C# widget
 bin/
 obj/
 publish/
@@ -5,3 +6,23 @@ publish/
 *.DotSettings.user
 .vs/
 *.suo
+
+# Node / frontend
+node_modules/
+app/dist/
+
+# Rust / Tauri
+app/src-tauri/target/
+app/src-tauri/gen/schemas/
+
+# Generated icon sources (kept: tray-white/black used at runtime)
+*.heapsnapshot
+
+# Logs
+*.log
+
+# Local build toolchain downloads (LLVM, VS bootstrapper)
+tools/
+
+# ZCode workspace
+.zcode/
