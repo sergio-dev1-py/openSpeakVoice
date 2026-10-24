@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VoiceToText Pill</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body class="pill-page">
+    <div class="pill" id="pill">
+      <svg
+        class="bolt"
+        width="13"
+        height="20"
+        viewBox="0 0 13 20"
+        fill="currentColor"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path d="M7.9 0.6 1 11.4h3.6L4.4 19.4 12 8.2H7.4L7.9 0.6Z" />
+      </svg>
+      <canvas id="wave" width="148" height="44"></canvas>
+    </div>
+    <script type="module" src="/src/pill.ts"></script>
+  </body>
+</html>

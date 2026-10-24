@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ajustes de VoiceToText</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body class="window-page">
+    <header class="win-header">
+      <svg class="bolt" width="14" height="22" viewBox="0 0 13 20" fill="currentColor">
+        <path d="M7.9 0.6 1 11.4h3.6L4.4 19.4 12 8.2H7.4L7.9 0.6Z" />
+      </svg>
+      <h1 id="title">Ajustes</h1>
+    </header>
+
+    <main class="win-body">
+      <!-- Idioma -->
+      <section class="card">
+        <span class="card-title" data-i18n="settings_language">Idioma</span>
+        <div class="row wrap" id="lang-chips"></div>
+        <button class="btn" id="more-langs" data-i18n="settings_all_languages">
+          Todos los idiomas…
+        </button>
+        <div class="col" id="lang-picker" style="display: none">
+          <input type="text" id="lang-search" data-i18n-ph="settings_search" />
+          <div class="lang-list" id="lang-list"></div>
+        </div>
+      </section>
+
+      <!-- Modo -->
+      <section class="card">
+        <span class="card-title" data-i18n="settings_mode">Modo</span>
+        <div class="row wrap" id="mode-chips"></div>
+        <div class="col" id="target-lang-box" style="display: none">
+          <label class="field-label" data-i18n="settings_target_lang">Idioma de destino</label>
+          <div class="row wrap" id="target-chips"></div>
+          <button class="btn" id="more-target-langs" data-i18n="settings_all_languages">
+            Todos los idiomas…
+          </button>
+          <div class="col" id="target-picker" style="display: none">
+            <input type="text" id="target-search" data-i18n-ph="settings_search" />
+            <div class="lang-list" id="target-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Atajo -->
+      <section class="card">
+        <span class="card-title" data-i18n="settings_hotkey">Atajo de teclado</span>
+        <div class="row wrap">
+          <div class="hotkey-box" id="hotkey-box">F8</div>
+          <button class="btn" id="capture-btn" data-i18n="settings_capture">Capturar</button>
+        </div>
+        <span class="hint" data-i18n="settings_hotkey_hint"></span>
+        <div class="col">
+          <label class="field-label" data-i18n="settings_modifiers">Modificadores</label>
+          <div class="row wrap" id="modifier-chips"></div>
+        </div>
+      </section>
+
+      <!-- Apariencia -->
+      <section class="card">
+        <span class="card-title" data-i18n="settings_appearance">Apariencia</span>
+        <div class="row wrap">
+          <label class="field-label" data-i18n="settings_border_color">Color del borde</label>
+          <input type="color" id="border-color" value="#ffffff" class="color-dot" />
+          <span class="hint" id="color-hex">#FFFFFF</span>
+        </div>
+        <div class="row wrap">
+          <label class="field-label" data-i18n="settings_opacity">Opacidad</label>
+          <input type="range" id="opacity" min="0" max="255" value="255" />
+          <span class="hint" id="opacity-value">255</span>
+        </div>
+        <label class="row" style="cursor: pointer">
+          <span class="flex-1">
+            <span data-i18n="settings_multicolor">Borde multicolor</span><br />
+            <span class="hint" data-i18n="settings_multicolor_desc"></span>
+          </span>
+          <span class="switch">
+            <input type="checkbox" id="multicolor" />
+            <span class="track"></span>
+            <span class="thumb"></span>
+          </span>
+        </label>
+      </section>
+    </main>
+
+    <footer class="win-footer">
+      <button class="btn" id="cancel" data-i18n="settings_cancel">Cancelar</button>
+      <button class="btn primary" id="save" data-i18n="settings_save">Guardar</button>
+    </footer>
+    <script type="module" src="/src/settings.ts"></script>
+  </body>
+</html>

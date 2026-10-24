@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Groq API Keys</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body class="window-page">
+    <header class="win-header">
+      <svg class="bolt" width="14" height="22" viewBox="0 0 13 20" fill="currentColor">
+        <path d="M7.9 0.6 1 11.4h3.6L4.4 19.4 12 8.2H7.4L7.9 0.6Z" />
+      </svg>
+      <h1 id="title">API Keys de Groq</h1>
+    </header>
+
+    <main class="win-body">
+      <section class="card">
+        <span class="card-title" id="k1-label">Key 1</span>
+        <div class="row">
+          <input type="password" id="key1" style="flex: 1" placeholder="gsk_…" autocomplete="off" />
+        </div>
+        <span class="hint" id="usage1"></span>
+      </section>
+
+      <section class="card">
+        <span class="card-title" id="k2-label">Key 2</span>
+        <div class="row">
+          <input type="password" id="key2" style="flex: 1" placeholder="gsk_…" autocomplete="off" />
+        </div>
+        <span class="hint" id="usage2"></span>
+      </section>
+
+      <p class="hint" id="info"></p>
+    </main>
+
+    <footer class="win-footer">
+      <button class="btn primary" id="save">Guardar</button>
+      <button class="btn" id="close">Cerrar</button>
+    </footer>
+    <script type="module" src="/src/keys.ts"></script>
+  </body>
+</html>
