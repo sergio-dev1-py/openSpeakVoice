@@ -109,6 +109,7 @@ pub struct AppSettings {
     pub border_color: String,
     pub border_opacity: u8,
     pub multicolor_border: bool,
+    pub theme: String,
     pub widget_pos_x: i32,
     pub widget_pos_y: i32,
 }
@@ -136,6 +137,7 @@ impl Default for AppSettings {
             border_color: "#FFFFFF".into(),
             border_opacity: 255,
             multicolor_border: false,
+            theme: "dark".into(),
             widget_pos_x: 100,
             widget_pos_y: 100,
         }
@@ -160,6 +162,9 @@ impl AppSettings {
         }
         if self.target_language.is_empty() {
             self.target_language = "en".into();
+        }
+        if self.theme != "light" && self.theme != "dark" {
+            self.theme = "dark".into();
         }
     }
 }

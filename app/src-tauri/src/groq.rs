@@ -1,6 +1,7 @@
 //! Groq API client — parity with the legacy GroqApiSpeechService:
 //! * transcription: `whisper-large-v3` via /audio/transcriptions (WAV upload)
-//! * translation: `llama-3.3-70b-versatile` via /chat/completions
+//! * translation: `openai/gpt-oss-120b` via /chat/completions, with
+//!   `openai/gpt-oss-20b` as an automatic fallback if the first is unavailable
 //! * dual API keys with per-minute usage windows (19 req/min each), rotated
 //!   to the least-used key and persisted in settings.json.
 
@@ -12,7 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const BASE_URL: &str = "https://api.groq.com/openai/v1";
 pub const TRANSCRIBE_MODEL: &str = "whisper-large-v3";
-pub const TRANSLATE_MODEL: &str = "llama-3.3-70b-versatile";
+pub const TRANSLATE_MODELS: &[&str] = &["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 pub const MAX_REQUESTS_PER_MINUTE: u32 = 19;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -115,16 +116,7 @@ pub fn pick_key(settings: &crate::settings::AppSettings) -> Result<KeyChoice, St
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let candidates: [(usize, &str); 2] = [
-        (
-            1,
-            &settings.api_key1,
-        ),
-        (
-            2,
-            &settings.api_key2,
-        ),
-    ];
+    let candidates: [(usize, &str); 2] = [(1, &settings.api_key1), (2, &settings.api_key2)];
 
     let mut best: Option<KeyChoice> = None;
     let mut exhausted: Vec<usize> = Vec::new();
@@ -133,21 +125,37 @@ pub fn pick_key(settings: &crate::settings::AppSettings) -> Result<KeyChoice, St
             continue;
         }
         let (count, window) = if idx == 1 {
-            (settings.api_key1_request_count, &settings.api_key1_window_start)
+            (
+                settings.api_key1_request_count,
+                &settings.api_key1_window_start,
+            )
         } else {
-            (settings.api_key2_request_count, &settings.api_key2_window_start)
+            (
+                settings.api_key2_request_count,
+                &settings.api_key2_window_start,
+            )
         };
         let elapsed = now.saturating_sub(window_start_epoch(window));
         if elapsed >= 60 {
             // window expired → fresh start (lowest index wins, like legacy)
-            return Ok(KeyChoice { index: idx, key: key.to_string() });
+            return Ok(KeyChoice {
+                index: idx,
+                key: key.to_string(),
+            });
         }
         if count < MAX_REQUESTS_PER_MINUTE {
-            let choice = KeyChoice { index: idx, key: key.to_string() };
+            let choice = KeyChoice {
+                index: idx,
+                key: key.to_string(),
+            };
             match &best {
                 Some(current) => {
                     // prefer the less-used key (ties → lower index, matching legacy)
-                    let current_count = if current.index == 1 { settings.api_key1_request_count } else { settings.api_key2_request_count };
+                    let current_count = if current.index == 1 {
+                        settings.api_key1_request_count
+                    } else {
+                        settings.api_key2_request_count
+                    };
                     if count < current_count {
                         best = Some(choice);
                     }
@@ -207,15 +215,25 @@ pub fn usage_status(settings: &crate::settings::AppSettings) -> (u32, u32, u32, 
         }
     };
     (
-        eff(settings.api_key1_request_count, &settings.api_key1_window_start),
+        eff(
+            settings.api_key1_request_count,
+            &settings.api_key1_window_start,
+        ),
         MAX_REQUESTS_PER_MINUTE,
-        eff(settings.api_key2_request_count, &settings.api_key2_window_start),
+        eff(
+            settings.api_key2_request_count,
+            &settings.api_key2_window_start,
+        ),
         MAX_REQUESTS_PER_MINUTE,
     )
 }
 
 /// Transcribes WAV bytes with `whisper-large-v3`. Returns the recognized text.
-pub async fn transcribe(api_key: &str, wav: Vec<u8>, language: Option<&str>) -> Result<String, String> {
+pub async fn transcribe(
+    api_key: &str,
+    wav: Vec<u8>,
+    language: Option<&str>,
+) -> Result<String, String> {
     let http = client()?;
     let part = reqwest::multipart::Part::bytes(wav)
         .file_name("audio.wav")
@@ -242,12 +260,14 @@ pub async fn transcribe(api_key: &str, wav: Vec<u8>, language: Option<&str>) -> 
     if !status.is_success() {
         return Err(format!("Groq respondió {status}: {body}"));
     }
-    let json: Value = serde_json::from_str(&body).map_err(|e| format!("Respuesta inválida de Groq: {e}"))?;
+    let json: Value =
+        serde_json::from_str(&body).map_err(|e| format!("Respuesta inválida de Groq: {e}"))?;
     Ok(json["text"].as_str().unwrap_or_default().trim().to_string())
 }
 
-/// Translates text to `target_code` via llama-3.3-70b. On any failure the
-/// original text is returned (graceful degradation, parity with legacy).
+/// Translates text to `target_code`. Tries `openai/gpt-oss-120b` first and
+/// falls back to `openai/gpt-oss-20b` if the model is missing or not available
+/// for the current API key.
 pub async fn translate(api_key: &str, text: &str, target_code: &str) -> Result<String, String> {
     let target_name = languages::display_name(target_code).unwrap_or(target_code);
     let system = format!(
@@ -256,32 +276,59 @@ Responde SOLO con la traducción, sin explicaciones, sin comillas, sin texto adi
     );
 
     let http = client()?;
-    let response = http
-        .post(format!("{BASE_URL}/chat/completions"))
-        .header(AUTHORIZATION, format!("Bearer {api_key}"))
-        .json(&json!({
-            "model": TRANSLATE_MODEL,
-            "temperature": 0.3,
-            "messages": [
-                { "role": "system", "content": system },
-                { "role": "user", "content": text }
-            ]
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Error de conexión con Groq: {e}"))?;
+    let mut last_error = String::from("No hay modelos de traducción configurados");
 
-    let status = response.status();
-    let body = response.text().await.unwrap_or_default();
-    if !status.is_success() {
-        return Err(format!("Groq respondió {status}: {body}"));
+    for (index, model) in TRANSLATE_MODELS.iter().enumerate() {
+        let response = http
+            .post(format!("{BASE_URL}/chat/completions"))
+            .header(AUTHORIZATION, format!("Bearer {api_key}"))
+            .json(&json!({
+                "model": *model,
+                "temperature": 0.3,
+                "messages": [
+                    { "role": "system", "content": system.as_str() },
+                    { "role": "user", "content": text }
+                ]
+            }))
+            .send()
+            .await
+            .map_err(|e| format!("Error de conexión con Groq: {e}"))?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if status.is_success() {
+            let json: Value = serde_json::from_str(&body)
+                .map_err(|e| format!("Respuesta inválida de Groq: {e}"))?;
+            return Ok(json["choices"][0]["message"]["content"]
+                .as_str()
+                .unwrap_or(text)
+                .trim()
+                .to_string());
+        }
+
+        let lower = body.to_ascii_lowercase();
+        let model_unavailable = status == reqwest::StatusCode::NOT_FOUND
+            || lower.contains("does not exist")
+            || lower.contains("not have access")
+            || lower.contains("decommissioned")
+            || lower.contains("model_not_found");
+        last_error = format!("Groq respondió {status} con {model}: {body}");
+
+        if model_unavailable && index + 1 < TRANSLATE_MODELS.len() {
+            log::warn!("translation model {model} unavailable, trying fallback: {body}");
+            continue;
+        }
+        if model_unavailable {
+            return Err(format!(
+                "Ningún modelo de traducción de Groq está disponible. Detalle: {last_error}"
+            ));
+        }
+        return Err(last_error);
     }
-    let json: Value = serde_json::from_str(&body).map_err(|e| format!("Respuesta inválida de Groq: {e}"))?;
-    Ok(json["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or(text)
-        .trim()
-        .to_string())
+
+    Err(format!(
+        "Ningún modelo de traducción de Groq está disponible. {last_error}"
+    ))
 }
 
 #[cfg(test)]

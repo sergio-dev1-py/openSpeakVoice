@@ -22,10 +22,10 @@ fn paste_via_clipboard(text: &str) -> Result<(), String> {
         .map_err(|e| format!("no se pudo escribir el portapapeles: {e}"))?;
     drop(clipboard);
 
-    std::thread::sleep(std::time::Duration::from_millis(30));
+    std::thread::sleep(std::time::Duration::from_millis(25));
 
-    let mut enigo =
-        Enigo::new(&enigo::Settings::default()).map_err(|e| format!("no se pudo iniciar la entrada sintética: {e}"))?;
+    let mut enigo = Enigo::new(&enigo::Settings::default())
+        .map_err(|e| format!("no se pudo iniciar la entrada sintética: {e}"))?;
     #[cfg(target_os = "macos")]
     let modifier = Key::Meta;
     #[cfg(not(target_os = "macos"))]
@@ -34,11 +34,11 @@ fn paste_via_clipboard(text: &str) -> Result<(), String> {
     enigo
         .key(modifier, Direction::Press)
         .map_err(|e| format!("no se pudo presionar el modificador: {e}"))?;
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    std::thread::sleep(std::time::Duration::from_millis(8));
     enigo
         .key(Key::Unicode('v'), Direction::Click)
         .map_err(|e| format!("no se pudo presionar V: {e}"))?;
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    std::thread::sleep(std::time::Duration::from_millis(8));
     enigo
         .key(modifier, Direction::Release)
         .map_err(|e| format!("no se pudo soltar el modificador: {e}"))?;
@@ -46,8 +46,8 @@ fn paste_via_clipboard(text: &str) -> Result<(), String> {
 }
 
 fn type_text(text: &str) -> Result<(), String> {
-    let mut enigo =
-        Enigo::new(&enigo::Settings::default()).map_err(|e| format!("no se pudo iniciar la entrada sintética: {e}"))?;
+    let mut enigo = Enigo::new(&enigo::Settings::default())
+        .map_err(|e| format!("no se pudo iniciar la entrada sintética: {e}"))?;
     enigo
         .text(text)
         .map_err(|e| format!("no se pudo tipear el texto: {e}"))

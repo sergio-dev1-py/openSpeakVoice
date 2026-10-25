@@ -7,13 +7,9 @@ publish/
 .vs/
 *.suo
 
-# Node / frontend
-node_modules/
-app/dist/
-
-# Rust / Tauri
+# Rust / Slint
 app/src-tauri/target/
-app/src-tauri/gen/schemas/
+app/src-tauri/gen/
 
 # Generated icon sources (kept: tray-white/black used at runtime)
 *.heapsnapshot

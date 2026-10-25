@@ -5,9 +5,27 @@
 pub fn tr(lang: &str, key: &str) -> &'static str {
     let spanish = matches!(lang, "es" | "");
     match key {
-        "tray_show" => if spanish { "Mostrar" } else { "Show" },
-        "tray_hide" => if spanish { "Ocultar" } else { "Hide" },
-        "tray_quit" => if spanish { "Salir" } else { "Quit" },
+        "tray_show" => {
+            if spanish {
+                "Mostrar"
+            } else {
+                "Show"
+            }
+        }
+        "tray_hide" => {
+            if spanish {
+                "Ocultar"
+            } else {
+                "Hide"
+            }
+        }
+        "tray_quit" => {
+            if spanish {
+                "Salir"
+            } else {
+                "Quit"
+            }
+        }
         _ => "",
     }
 }

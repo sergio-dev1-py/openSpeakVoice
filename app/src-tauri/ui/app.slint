@@ -1,0 +1,687 @@
+import { Button, CheckBox, ComboBox, LineEdit, ScrollView, Slider, Palette } from "std-widgets.slint";
+
+export { Palette }
+
+export struct ModelRow {
+    name: string,
+    title: string,
+    size: string,
+    downloaded: bool,
+    active: bool,
+    busy: bool,
+    progress: int,
+    confirming: bool,
+}
+
+export component PillWindow inherits Window {
+    in property <bool> dark: true;
+    in property <bool> listening: false;
+    in property <bool> transcribing: false;
+    in property <bool> is-groq: true;
+    in property <bool> is-translation: false;
+    in property <bool> can-hide: true;
+    in property <string> target-code: "en";
+    in property <string> target-label: "English";
+    in property <string> provider-label: "Groq";
+    in property <string> mode-label: "Transcripción";
+    in property <color> accent: #8ab4ff;
+    in property <color> wave-color: #8ab4ff;
+    in property <[float]> levels: [
+        0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+        0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+        0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02
+    ];
+
+    callback toggle();
+    callback open-settings();
+    callback open-keys();
+    callback open-models();
+    callback set-provider(string);
+    callback set-mode(string);
+    callback set-target(string);
+    callback hide-pill();
+    callback quit-app();
+    callback begin-drag();
+    callback request-menu(length, length);
+
+    title: "VoiceToText";
+    width: 121px;
+    height: 32px;
+    no-frame: true;
+    background: transparent;
+    always-on-top: true;
+
+    property <color> bg1: dark ? #1c2029 : #ffffff;
+    property <color> bg2: dark ? #0f1117 : #eef2f8;
+    property <color> pill-border: dark ? #ffffff24 : #000000;
+    property <color> active-border: dark ? accent : #000000;
+    property <color> button-bg: dark ? #ffffff14 : #0000000d;
+    property <color> button-border: dark ? #ffffff30 : #00000038;
+    property <color> play-color: dark ? #eef1f7 : #111827;
+    property <color> stop-bg: #ff6b6b38;
+    property <color> stop-border: #ff6b6b99;
+    property <color> stop-color: #ff9a9a;
+
+    // Frameless, non-focusable pill. Right-click opens the themed MenuWindow;
+    // left drag is driven by the native cursor worker in Rust.
+    pill-touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                root.begin-drag();
+            } else if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                root.request-menu(pill-touch.mouse-x, pill-touch.mouse-y);
+            }
+        }
+
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: 121px;
+            height: 32px;
+            border-radius: 16px;
+            border-width: 1.5px;
+            border-color: root.listening || root.transcribing ? root.active-border : root.pill-border;
+            background: @linear-gradient(180deg, root.bg1 0%, root.bg2 100%);
+
+                HorizontalLayout {
+                    padding-left: 7px;
+                    padding-right: 7px;
+                    spacing: 5px;
+                    alignment: center;
+
+                    Image {
+                        width: 12px;
+                        height: 18px;
+                        image-fit: contain;
+                        source: root.dark ? @image-url("../icons/tray-white.png") : @image-url("../icons/tray-black.png");
+                    }
+
+                    HorizontalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 0.6px;
+                        alignment: center;
+                        for level in root.levels : Rectangle {
+                            width: 1.3px;
+                            height: 1.6px + level * 12px;
+                            border-radius: 0.65px;
+                            background: root.wave-color;
+                        }
+                    }
+
+                    start-btn := Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: root.listening ? root.stop-border : root.button-border;
+                        background: root.listening ? root.stop-bg : root.button-bg;
+                        opacity: root.transcribing ? 0.45 : 1.0;
+
+                        Text {
+                            text: root.transcribing ? "…" : root.listening ? "■" : "▶";
+                            color: root.listening ? root.stop-color : root.play-color;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { root.toggle(); }
+                            pointer-event(event) => {
+                                // The button's TouchArea consumes right presses,
+                                // so request the shared context menu explicitly.
+                                if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                                    root.request-menu(
+                                        start-btn.absolute-position.x + start-btn.width / 2,
+                                        start-btn.absolute-position.y + start-btn.height / 2
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+}
+
+component MenuRow inherits Rectangle {
+    in property <bool> dark: true;
+    in property <string> label: "";
+    in property <bool> checked: false;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    callback clicked();
+
+    height: 26px;
+    border-radius: 6px;
+    background: touch.has-hover && root.enabled
+        ? (root.danger ? (root.dark ? #ff6b6b22 : #dc262618) : (root.dark ? #ffffff12 : #0000000a))
+        : transparent;
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    Text {
+        x: 10px;
+        y: 0;
+        width: parent.width - (root.checked ? 46px : 20px);
+        height: parent.height;
+        text: root.label;
+        color: root.danger ? (root.dark ? #ff9a9a : #dc2626) : (root.dark ? #e9ebf1 : #101827);
+        font-size: 12.5px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if root.checked : Text {
+        x: parent.width - 30px;
+        y: 0;
+        width: 20px;
+        height: parent.height;
+        text: "✓";
+        color: root.dark ? #8ab4ff : #2563eb;
+        font-size: 13px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+component MenuHeader inherits Text {
+    in property <bool> dark: true;
+    height: 18px;
+    color: dark ? #8ab4ff : #2563eb;
+    font-size: 10px;
+    font-weight: 700;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+export component MenuWindow inherits Window {
+    in property <bool> dark: true;
+    in property <bool> is-groq: true;
+    in property <bool> is-translation: false;
+    in property <string> target-code: "en";
+    in property <string> target-label: "English";
+    in property <bool> can-hide: true;
+    in property <string> provider-label: "Groq";
+    in property <string> mode-label: "Transcripción";
+
+    callback close-menu();
+    callback open-settings();
+    callback open-keys();
+    callback open-models();
+    callback set-provider(string);
+    callback set-mode(string);
+    callback set-target(string);
+    callback hide-pill();
+    callback quit-app();
+
+    public function focus-menu() {
+        focus-scope.focus();
+    }
+
+    title: "VoiceToText";
+    width: 260px;
+    height: 460px;
+    no-frame: true;
+    background: transparent;
+    always-on-top: true;
+
+    focus-scope := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close-menu();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: root.dark ? #ffffff1f : #0f172a24;
+        background: root.dark ? #14161cf7 : #fffffff7;
+        clip: true;
+
+        VerticalLayout {
+            padding: 6px;
+            spacing: 1px;
+
+            MenuRow { dark: root.dark; label: "Ajustes"; clicked => { root.open-settings(); } }
+            MenuRow { dark: root.dark; label: "API Keys…"; clicked => { root.open-keys(); } }
+
+            Rectangle { height: 1px; background: root.dark ? #ffffff14 : #0f172a14; }
+
+            MenuHeader { dark: root.dark; text: "PROVEEDOR · " + root.provider-label; }
+            MenuRow { dark: root.dark; label: "Groq (nube)"; checked: root.is-groq; clicked => { root.set-provider("GroqApi"); } }
+            MenuRow { dark: root.dark; label: "Whisper (local)"; checked: !root.is-groq; clicked => { root.set-provider("LocalWhisper"); } }
+            MenuRow { dark: root.dark; label: "Modelos…"; clicked => { root.open-models(); } }
+
+            MenuHeader { dark: root.dark; text: "MODO · " + root.mode-label; }
+            MenuRow { dark: root.dark; label: "Transcripción"; checked: !root.is-translation; clicked => { root.set-mode("transcription"); } }
+            MenuRow { dark: root.dark; label: "Traducción"; checked: root.is-translation; clicked => { root.set-mode("translation"); } }
+
+            MenuHeader { dark: root.dark; text: "IDIOMA DESTINO · " + root.target-label; }
+            HorizontalLayout {
+                spacing: 2px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 1px;
+                    MenuRow { dark: root.dark; label: "English"; checked: root.target-code == "en"; clicked => { root.set-target("en"); } }
+                    MenuRow { dark: root.dark; label: "Español"; checked: root.target-code == "es"; clicked => { root.set-target("es"); } }
+                    MenuRow { dark: root.dark; label: "Português"; checked: root.target-code == "pt"; clicked => { root.set-target("pt"); } }
+                    MenuRow { dark: root.dark; label: "Français"; checked: root.target-code == "fr"; clicked => { root.set-target("fr"); } }
+                    MenuRow { dark: root.dark; label: "Deutsch"; checked: root.target-code == "de"; clicked => { root.set-target("de"); } }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 1px;
+                    MenuRow { dark: root.dark; label: "Italiano"; checked: root.target-code == "it"; clicked => { root.set-target("it"); } }
+                    MenuRow { dark: root.dark; label: "日本語"; checked: root.target-code == "ja"; clicked => { root.set-target("ja"); } }
+                    MenuRow { dark: root.dark; label: "한국어"; checked: root.target-code == "ko"; clicked => { root.set-target("ko"); } }
+                    MenuRow { dark: root.dark; label: "中文"; checked: root.target-code == "zh"; clicked => { root.set-target("zh"); } }
+                    MenuRow { dark: root.dark; label: "Русский"; checked: root.target-code == "ru"; clicked => { root.set-target("ru"); } }
+                }
+            }
+
+            Rectangle { height: 1px; background: root.dark ? #ffffff14 : #0f172a14; }
+            MenuRow { dark: root.dark; label: "Ocultar widget"; enabled: root.can-hide; clicked => { root.hide-pill(); } }
+            MenuRow { dark: root.dark; label: "Salir"; enabled: root.can-hide; danger: true; clicked => { root.quit-app(); } }
+        }
+    }
+}
+
+export component ManagementWindow inherits Window {
+    in property <bool> dark: true;
+    in-out property <int> view: 0;
+    in property <[string]> language-names: [];
+    in-out property <int> language-index: 0;
+    in-out property <int> target-index: 0;
+    in-out property <int> mode-index: 0;
+    in-out property <string> hotkey: "F8";
+    in-out property <bool> ctrl-mod: false;
+    in-out property <bool> alt-mod: false;
+    in-out property <bool> shift-mod: false;
+    in-out property <bool> win-mod: false;
+    in-out property <int> theme-index: 0;
+    in-out property <string> color-hex: "#8AB4FF";
+    in-out property <float> border-opacity: 255;
+    in-out property <bool> multicolor: false;
+    in-out property <string> api-key1: "";
+    in-out property <string> api-key2: "";
+    in property <string> usage1: "";
+    in property <string> usage2: "";
+    in-out property <bool> use-gpu: true;
+    in property <[ModelRow]> model-rows: [];
+
+    callback close-window();
+    callback tick();
+    callback save-settings();
+    callback save-keys();
+    callback model-action(string, string);
+    callback gpu-changed(bool);
+
+    title: root.view == 0 ? "Ajustes" : root.view == 1 ? "API Keys" : "Modelos";
+    width: 560px;
+    height: 700px;
+    no-frame: true;
+    background: transparent;
+    icon: @image-url("../icons/icon.png");
+
+    property <color> text-color: dark ? #e9ebf1 : #101827;
+    property <color> dim-color: dark ? #98a0ad : #475569;
+    property <color> surface: dark ? #14161c : #ffffff;
+    property <color> surface-2: dark ? #1b1e26 : #f7f9fc;
+    property <color> border-color: dark ? #ffffff17 : #0f172a1a;
+    property <color> accent-color: dark ? #8ab4ff : #2563eb;
+
+    Timer {
+        interval: 250ms;
+        running: true;
+        triggered => { root.tick(); }
+    }
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 14px;
+        clip: true;
+        background: root.dark ? #0d0e12 : #f2f5fa;
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+
+            WindowMoveArea {
+                height: 34px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    Image {
+                        width: 14px;
+                        height: 22px;
+                        image-fit: contain;
+                        source: dark ? @image-url("../icons/tray-white.png") : @image-url("../icons/tray-black.png");
+                    }
+                    Text {
+                        text: root.view == 0 ? "Ajustes" : root.view == 1 ? "API Keys" : "Modelos";
+                        color: root.text-color;
+                        font-size: 17px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Button {
+                        text: "Cerrar";
+                        clicked => { root.close-window(); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                Button { text: "Ajustes"; primary: root.view == 0; clicked => { root.view = 0; } }
+                Button { text: "API Keys"; primary: root.view == 1; clicked => { root.view = 1; } }
+                Button { text: "Modelos"; primary: root.view == 2; clicked => { root.view = 2; } }
+            }
+
+            if root.view == 0 : ScrollView {
+                VerticalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        background: root.surface;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: root.border-color;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 6px;
+                            Text { text: "IDIOMA DE RECONOCIMIENTO"; color: root.accent-color; font-size: 11px; font-weight: 600; }
+                            ComboBox {
+                                model: root.language-names;
+                                current-index <=> root.language-index;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        background: root.surface;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: root.border-color;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 6px;
+                            Text { text: "MODO"; color: root.accent-color; font-size: 11px; font-weight: 600; }
+                            ComboBox {
+                                model: ["Transcripción", "Traducción"];
+                                current-index <=> root.mode-index;
+                            }
+                            Text { text: "IDIOMA DE DESTINO"; color: root.dim-color; font-size: 11px; }
+                            ComboBox {
+                                model: root.language-names;
+                                current-index <=> root.target-index;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        background: root.surface;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: root.border-color;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 6px;
+                            Text { text: "ATAJO DE TECLADO"; color: root.accent-color; font-size: 11px; font-weight: 600; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                LineEdit {
+                                    text <=> root.hotkey;
+                                    placeholder-text: "F8";
+                                }
+                                Button {
+                                    text: "Restaurar F8";
+                                    clicked => {
+                                        root.hotkey = "F8";
+                                        root.ctrl-mod = false;
+                                        root.alt-mod = false;
+                                        root.shift-mod = false;
+                                        root.win-mod = false;
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                CheckBox { text: "Ctrl"; checked <=> root.ctrl-mod; }
+                                CheckBox { text: "Alt"; checked <=> root.alt-mod; }
+                                CheckBox { text: "Shift"; checked <=> root.shift-mod; }
+                                CheckBox { text: "Win"; checked <=> root.win-mod; }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        background: root.surface;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: root.border-color;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 6px;
+                            Text { text: "TEMA Y APARIENCIA"; color: root.accent-color; font-size: 11px; font-weight: 600; }
+                            ComboBox {
+                                model: ["Oscuro", "Claro"];
+                                current-index <=> root.theme-index;
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                Rectangle { width: 24px; height: 24px; border-radius: 12px; background: #8AB4FF; border-width: 2px; border-color: root.color-hex == "#8AB4FF" ? root.accent-color : root.border-color; TouchArea { clicked => { root.color-hex = "#8AB4FF"; } } }
+                                Rectangle { width: 24px; height: 24px; border-radius: 12px; background: #FFFFFF; border-width: 2px; border-color: root.color-hex == "#FFFFFF" ? root.accent-color : root.border-color; TouchArea { clicked => { root.color-hex = "#FFFFFF"; } } }
+                                Rectangle { width: 24px; height: 24px; border-radius: 12px; background: #FF6B6B; border-width: 2px; border-color: root.color-hex == "#FF6B6B" ? root.accent-color : root.border-color; TouchArea { clicked => { root.color-hex = "#FF6B6B"; } } }
+                                Rectangle { width: 24px; height: 24px; border-radius: 12px; background: #4ADE80; border-width: 2px; border-color: root.color-hex == "#4ADE80" ? root.accent-color : root.border-color; TouchArea { clicked => { root.color-hex = "#4ADE80"; } } }
+                                Rectangle { width: 24px; height: 24px; border-radius: 12px; background: #F59E0B; border-width: 2px; border-color: root.color-hex == "#F59E0B" ? root.accent-color : root.border-color; TouchArea { clicked => { root.color-hex = "#F59E0B"; } } }
+                                LineEdit {
+                                    text <=> root.color-hex;
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "Opacidad"; color: root.dim-color; vertical-alignment: center; }
+                                Slider {
+                                    minimum: 0;
+                                    maximum: 255;
+                                    value <=> root.border-opacity;
+                                }
+                                Text {
+                                    text: round(root.border-opacity);
+                                    color: root.dim-color;
+                                    width: 34px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            CheckBox {
+                                text: "Borde multicolor";
+                                checked <=> root.multicolor;
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        Button { text: "Cancelar"; clicked => { root.close-window(); } }
+                        Button { text: "Guardar"; primary: true; clicked => { root.save-settings(); } }
+                    }
+                }
+            }
+
+            if root.view == 1 : ScrollView {
+                VerticalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        background: root.surface;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: root.border-color;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 6px;
+                            Text { text: "API KEYS DE GROQ"; color: root.accent-color; font-size: 11px; font-weight: 600; }
+                            LineEdit { text <=> root.api-key1; input-type: password; placeholder-text: "Key 1"; }
+                            Text { text: root.usage1; color: root.dim-color; font-size: 11px; }
+                            LineEdit { text <=> root.api-key2; input-type: password; placeholder-text: "Key 2"; }
+                            Text { text: root.usage2; color: root.dim-color; font-size: 11px; }
+                            Text { text: "Se guardan automáticamente. Rotación al llegar a 19 req/min por key."; color: root.dim-color; font-size: 11px; wrap: word-wrap; }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        Button { text: "Cerrar"; clicked => { root.close-window(); } }
+                        Button { text: "Guardar"; primary: true; clicked => { root.save-keys(); } }
+                    }
+                }
+            }
+
+            if root.view == 2 : ScrollView {
+                VerticalLayout {
+                    spacing: 8px;
+                    gpu-cb := CheckBox { text: "Aceleración por GPU"; checked <=> root.use-gpu; toggled => { root.gpu-changed(gpu-cb.checked); } }
+                    Text { text: "Modelos locales de Whisper"; color: root.dim-color; font-size: 11px; }
+                    for row in root.model-rows : Rectangle {
+                        background: row.active ? (dark ? #1d2a44 : #e5efff) : root.surface;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: row.active ? root.accent-color : root.border-color;
+                        height: 78px;
+                        HorizontalLayout {
+                            padding: 8px;
+                            spacing: 8px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text { text: row.title; color: root.text-color; font-weight: 600; }
+                                Text {
+                                    text: row.size
+                                        + (row.active ? "  ·  Activo" : row.downloaded ? "  ·  Descargado" : "")
+                                        + (row.busy ? "  ·  Descargando " + row.progress + "%" : "");
+                                    color: root.dim-color;
+                                    font-size: 11px;
+                                }
+                                Rectangle {
+                                    height: 4px;
+                                    border-radius: 2px;
+                                    background: root.surface-2;
+                                    visible: row.busy;
+                                    width: 160px;
+                                    Rectangle {
+                                        width: row.progress * 1.6px;
+                                        height: 4px;
+                                        border-radius: 2px;
+                                        background: root.accent-color;
+                                    }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 94px;
+                                if !row.downloaded : Button {
+                                    text: row.busy ? "Cancelar" : "Descargar";
+                                    primary: !row.busy;
+                                    clicked => { root.model-action(row.busy ? "cancel" : "download", row.name); }
+                                }
+                                if row.downloaded && !row.active : Button {
+                                    text: "Usar";
+                                    enabled: !row.busy;
+                                    clicked => { root.model-action("use", row.name); }
+                                }
+                                if row.downloaded : Button {
+                                    text: row.confirming ? "¿Seguro?" : "Borrar";
+                                    enabled: !row.busy;
+                                    clicked => { root.model-action("delete", row.name); }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        Button { text: "Cerrar"; clicked => { root.close-window(); } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ToastWindow inherits Window {
+    in property <bool> dark: true;
+    in property <string> message: "";
+    in property <bool> is-error: true;
+
+    callback close-toast();
+
+    width: 340px;
+    height: 110px;
+    no-frame: true;
+    background: transparent;
+    always-on-top: true;
+
+    Rectangle {
+        x: 6px;
+        y: 6px;
+        width: 328px;
+        height: 98px;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: root.is-error ? #ff6b6b66 : #4ade8066;
+        background: dark ? #181a21f7 : #fffffff7;
+        HorizontalLayout {
+            padding: 12px;
+            spacing: 8px;
+            Text {
+                text: root.is-error ? "!" : "✓";
+                color: root.is-error ? #ff6b6b : #16a34a;
+                font-size: 16px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.message;
+                color: dark ? #e9ebf1 : #101827;
+                font-size: 12.5px;
+                wrap: word-wrap;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            TouchArea {
+                width: 20px;
+                Text { text: "×"; color: dark ? #98a0ad : #475569; font-size: 16px; horizontal-alignment: center; }
+                clicked => { root.close-toast(); }
+            }
+        }
+    }
+}
+
+export component TrayIcon inherits SystemTrayIcon {
+    in property <bool> dark: true;
+    in property <string> show-label: "Mostrar";
+    in property <string> hide-label: "Ocultar";
+    in property <string> quit-label: "Salir";
+    callback show-pill();
+    callback hide-pill();
+    callback quit-app();
+
+    visible: true;
+    icon: root.dark ? @image-url("../icons/tray-white.png") : @image-url("../icons/tray-black.png");
+    tooltip: "VoiceToText";
+    clicked => { root.show-pill(); }
+    Menu {
+        MenuItem { title: root.show-label; activated => { root.show-pill(); } }
+        MenuItem { title: root.hide-label; activated => { root.hide-pill(); } }
+        MenuSeparator {}
+        MenuItem { title: root.quit-label; activated => { root.quit-app(); } }
+    }
+}

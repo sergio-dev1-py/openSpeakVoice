@@ -1,27 +1,33 @@
 //! Global hotkey registration. Settings store the hotkey in legacy C# `Keys`
-//! names ("F8", "A", "D1", "Oem3"…); this maps them to W3C `Code` names used
-//! by the global-hotkey/tauri-plugin-global-shortcut ecosystem.
+//! names ("F8", "A", "D1", "Oem3"…); this maps them to the W3C `Code` names
+//! understood by the `global-hotkey` crate.
 
 use crate::settings::ModifierKeys;
 
 /// C# Keys name → W3C KeyboardEvent.code name (as parsed by global-hotkey).
+///
+/// Matching is case-insensitive so the settings field accepts `F8`, `f8`,
+/// `Space`, `SPACE`, `D1`, `PageUp`, raw punctuation, etc.
 pub fn code_name(key: &str) -> Option<&'static str> {
     const FKEYS: [&str; 24] = [
         "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "F13", "F14",
         "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24",
     ];
     let k = key.trim();
+    let upper = k.to_ascii_uppercase();
+
     // F-keys
-    if let Some(rest) = k.strip_prefix('F') {
+    if let Some(rest) = upper.strip_prefix('F') {
         if let Ok(n) = rest.parse::<u32>() {
             if (1..=24).contains(&n) {
                 return Some(FKEYS[(n - 1) as usize]);
             }
         }
     }
-    // Letters
-    if k.len() == 1 {
-        let c = k.chars().next().unwrap().to_ascii_uppercase();
+
+    // Letters and plain digits.
+    if upper.len() == 1 {
+        let c = upper.chars().next().unwrap();
         if c.is_ascii_uppercase() {
             return Some(match c {
                 'A' => "KeyA",
@@ -52,64 +58,81 @@ pub fn code_name(key: &str) -> Option<&'static str> {
                 _ => "KeyZ",
             });
         }
+        if c.is_ascii_digit() {
+            return Some(match c {
+                '0' => "Digit0",
+                '1' => "Digit1",
+                '2' => "Digit2",
+                '3' => "Digit3",
+                '4' => "Digit4",
+                '5' => "Digit5",
+                '6' => "Digit6",
+                '7' => "Digit7",
+                '8' => "Digit8",
+                _ => "Digit9",
+            });
+        }
     }
-    // Key name table (static; the trimmed input is only matched against).
-    let matched: &str = k;
-    let result = match matched {
-        "D0" => "Digit0",
-        "D1" => "Digit1",
-        "D2" => "Digit2",
-        "D3" => "Digit3",
-        "D4" => "Digit4",
-        "D5" => "Digit5",
-        "D6" => "Digit6",
-        "D7" => "Digit7",
-        "D8" => "Digit8",
-        "D9" => "Digit9",
-        "NumPad0" => "Numpad0",
-        "NumPad1" => "Numpad1",
-        "NumPad2" => "Numpad2",
-        "NumPad3" => "Numpad3",
-        "NumPad4" => "Numpad4",
-        "NumPad5" => "Numpad5",
-        "NumPad6" => "Numpad6",
-        "NumPad7" => "Numpad7",
-        "NumPad8" => "Numpad8",
-        "NumPad9" => "Numpad9",
-        "Space" => "Space",
-        "Enter" | "Return" => "Enter",
-        "Escape" => "Escape",
-        "Tab" => "Tab",
-        "Back" | "Backspace" => "Backspace",
-        "Delete" => "Delete",
-        "Insert" => "Insert",
-        "Home" => "Home",
-        "End" => "End",
-        "Prior" | "PageUp" => "PageUp",
-        "Next" | "PageDown" => "PageDown",
-        "Up" => "ArrowUp",
-        "Down" => "ArrowDown",
-        "Left" => "ArrowLeft",
-        "Right" => "ArrowRight",
-        "Oemtilde" | "OemTilde" => "Backquote",
-        "OemMinus" => "Minus",
-        "Oemplus" => "Equal",
-        "OemOpenBrackets" => "BracketLeft",
-        "OemCloseBrackets" => "BracketRight",
-        "OemPipe" => "Backslash",
-        "OemSemicolon" => "Semicolon",
-        "OemQuotes" => "Quote",
-        "Oemcomma" | "OemComma" => "Comma",
-        "OemPeriod" => "Period",
-        "OemQuestion" => "Slash",
-        "Multiply" => "NumpadMultiply",
-        "Add" => "NumpadAdd",
-        "Subtract" => "NumpadSubtract",
-        "Divide" => "NumpadDivide",
-        "Decimal" => "NumpadDecimal",
+
+    Some(match upper.as_str() {
+        "D0" | "DIGIT0" => "Digit0",
+        "D1" | "DIGIT1" => "Digit1",
+        "D2" | "DIGIT2" => "Digit2",
+        "D3" | "DIGIT3" => "Digit3",
+        "D4" | "DIGIT4" => "Digit4",
+        "D5" | "DIGIT5" => "Digit5",
+        "D6" | "DIGIT6" => "Digit6",
+        "D7" | "DIGIT7" => "Digit7",
+        "D8" | "DIGIT8" => "Digit8",
+        "D9" | "DIGIT9" => "Digit9",
+        "NUMPAD0" | "NUM0" => "Numpad0",
+        "NUMPAD1" | "NUM1" => "Numpad1",
+        "NUMPAD2" | "NUM2" => "Numpad2",
+        "NUMPAD3" | "NUM3" => "Numpad3",
+        "NUMPAD4" | "NUM4" => "Numpad4",
+        "NUMPAD5" | "NUM5" => "Numpad5",
+        "NUMPAD6" | "NUM6" => "Numpad6",
+        "NUMPAD7" | "NUM7" => "Numpad7",
+        "NUMPAD8" | "NUM8" => "Numpad8",
+        "NUMPAD9" | "NUM9" => "Numpad9",
+        "SPACE" => "Space",
+        "ENTER" | "RETURN" => "Enter",
+        "ESCAPE" | "ESC" => "Escape",
+        "TAB" => "Tab",
+        "BACK" | "BACKSPACE" => "Backspace",
+        "DELETE" | "DEL" => "Delete",
+        "INSERT" | "INS" => "Insert",
+        "HOME" => "Home",
+        "END" => "End",
+        "PRIOR" | "PAGEUP" | "PGUP" => "PageUp",
+        "NEXT" | "PAGEDOWN" | "PGDN" => "PageDown",
+        "UP" => "ArrowUp",
+        "DOWN" => "ArrowDown",
+        "LEFT" => "ArrowLeft",
+        "RIGHT" => "ArrowRight",
+        "CAPSLOCK" => "CapsLock",
+        "NUMLOCK" => "NumLock",
+        "SCROLLLOCK" => "ScrollLock",
+        "PRINTSCREEN" | "PRTSC" => "PrintScreen",
+        "PAUSE" => "Pause",
+        "OEMTILDE" | "OEM3" | "BACKQUOTE" | "`" => "Backquote",
+        "OEMMINUS" | "MINUS" | "-" => "Minus",
+        "OEMPLUS" | "EQUAL" | "=" => "Equal",
+        "OEMOPENBRACKETS" | "BRACKETLEFT" | "[" => "BracketLeft",
+        "OEMCLOSEBRACKETS" | "BRACKETRIGHT" | "]" => "BracketRight",
+        "OEMPIPE" | "BACKSLASH" | "\\" => "Backslash",
+        "OEMSEMICOLON" | "SEMICOLON" | ";" => "Semicolon",
+        "OEMQUOTES" | "QUOTE" | "'" => "Quote",
+        "OEMCOMMA" | "COMMA" | "," => "Comma",
+        "OEMPERIOD" | "PERIOD" | "." => "Period",
+        "OEMQUESTION" | "SLASH" | "/" => "Slash",
+        "MULTIPLY" | "NUMPADMULTIPLY" => "NumpadMultiply",
+        "ADD" | "NUMPADADD" => "NumpadAdd",
+        "SUBTRACT" | "NUMPADSUBTRACT" => "NumpadSubtract",
+        "DIVIDE" | "NUMPADDIVIDE" => "NumpadDivide",
+        "DECIMAL" | "NUMPADDECIMAL" => "NumpadDecimal",
         _ => return None,
-    };
-    Some(result)
+    })
 }
 
 /// Builds the shortcut string accepted by `Shortcut::from_str`, e.g.
@@ -181,5 +204,34 @@ mod tests {
     #[test]
     fn unknown_key_rejected() {
         assert!(shortcut_string("None", ModifierKeys::NONE).is_none());
+    }
+
+    #[test]
+    fn named_keys_are_case_insensitive() {
+        assert_eq!(
+            shortcut_string("space", ModifierKeys::NONE).unwrap(),
+            "Space"
+        );
+        assert_eq!(
+            shortcut_string("SPACE", ModifierKeys::NONE).unwrap(),
+            "Space"
+        );
+        assert_eq!(
+            shortcut_string("pageup", ModifierKeys::NONE).unwrap(),
+            "PageUp"
+        );
+        assert_eq!(
+            shortcut_string("Esc", ModifierKeys::NONE).unwrap(),
+            "Escape"
+        );
+    }
+
+    #[test]
+    fn punctuation_and_numpad_are_supported() {
+        assert_eq!(shortcut_string("-", ModifierKeys::NONE).unwrap(), "Minus");
+        assert_eq!(
+            shortcut_string("numpad5", ModifierKeys::NONE).unwrap(),
+            "Numpad5"
+        );
     }
 }

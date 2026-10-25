@@ -63,7 +63,13 @@ impl AudioHandle {
     /// Blocking; returns the recording as 16 kHz mono i16 samples.
     pub fn stop(&self) -> Vec<i16> {
         let (reply_tx, reply_rx) = mpsc::channel();
-        if self.tx.lock().unwrap().send(AudioCmd::Stop(reply_tx)).is_err() {
+        if self
+            .tx
+            .lock()
+            .unwrap()
+            .send(AudioCmd::Stop(reply_tx))
+            .is_err()
+        {
             return Vec::new();
         }
         reply_rx.recv().unwrap_or_default()
@@ -71,7 +77,7 @@ impl AudioHandle {
 
     /// Latest input level, 0.0..1.0.
     pub fn level(&self) -> f32 {
-        self.level.load(Ordering::Relaxed) as f32 / 1000.0
+        (self.level.load(Ordering::Relaxed) as f32 / 1000.0).sqrt()
     }
 }
 
@@ -282,5 +288,27 @@ mod tests {
     #[test]
     fn empty_input_gives_empty_output() {
         assert!(resample_to_16k(&[], 48_000).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod device_probe {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    #[test]
+    fn probe_cpal_devices() {
+        let host = cpal::default_host();
+        println!("host id: {:?}", host.id());
+        match host.input_devices() {
+            Ok(devices) => {
+                for d in devices {
+                    println!("input: {:?}", d.name());
+                }
+            }
+            Err(e) => println!("input_devices error: {e}"),
+        }
+        println!(
+            "default input: {:?}",
+            host.default_input_device().map(|d| d.name().ok())
+        );
     }
 }

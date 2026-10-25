@@ -7,10 +7,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter};
-use whisper_rs::{
-    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters,
-};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 pub const GROQ_FALLBACK_HINT: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
@@ -40,7 +37,10 @@ pub fn list_models() -> Vec<ModelInfo> {
         .iter()
         .map(|(name, label, size_label)| {
             let path = model_path(name);
-            let size_on_disk = path.as_ref().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len());
+            let size_on_disk = path
+                .as_ref()
+                .and_then(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len());
             ModelInfo {
                 name,
                 label,
@@ -69,13 +69,16 @@ impl Default for DownloadGuard {
     }
 }
 
-/// Streams a model to disk, emitting `model-progress` events
-/// (`{ name, downloaded, total, percent }`) and honoring `guard` cancellation.
-pub async fn download_model(
-    app: AppHandle,
+/// Streams a model to disk, reporting progress through `on_progress`
+/// (`downloaded, total, percent`) and honoring `guard` cancellation.
+pub async fn download_model<F>(
     guard: std::sync::Arc<DownloadGuard>,
     name: &str,
-) -> Result<(), String> {
+    on_progress: F,
+) -> Result<(), String>
+where
+    F: Fn(u64, Option<u64>, u32) + Send + Sync,
+{
     if !MODELS.iter().any(|(n, _, _)| *n == name) {
         return Err(format!("Modelo desconocido: {name}"));
     }
@@ -120,15 +123,7 @@ pub async fn download_model(
             let percent = total
                 .map(|t| (downloaded as f64 / t as f64 * 100.0) as u32)
                 .unwrap_or(0);
-            let _ = app.emit(
-                "model-progress",
-                serde_json::json!({
-                    "name": name,
-                    "downloaded": downloaded,
-                    "total": total.unwrap_or(0),
-                    "percent": percent,
-                }),
-            );
+            on_progress(downloaded, total, percent);
         }
     }
     file.flush().await.map_err(|e| e.to_string())?;
@@ -136,10 +131,7 @@ pub async fn download_model(
     tokio::fs::rename(&tmp, &path)
         .await
         .map_err(|e| format!("No se pudo finalizar la descarga: {e}"))?;
-    let _ = app.emit(
-        "model-progress",
-        serde_json::json!({ "name": name, "downloaded": downloaded, "total": total.unwrap_or(0), "percent": 100 }),
-    );
+    on_progress(downloaded, total, 100);
     Ok(())
 }
 
@@ -206,6 +198,9 @@ impl WhisperEngine {
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_temperature(0.0);
+        params.set_no_context(true);
+        params.set_suppress_blank(true);
+        params.set_suppress_nst(true);
         if let Some(lang) = language {
             params.set_language(Some(lang));
         }
