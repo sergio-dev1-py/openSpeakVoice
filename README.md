@@ -92,6 +92,8 @@ El ejecutable queda en:
 app\src-tauri\target\release\voicetotext.exe
 ```
 
+> **No uses `cargo rustc --release -- -C lto=off`.** El perfil release compila todas las dependencias con `lto = "fat"`; mezclar un binario sin LTO produce errores `LNK2001`/`LNK1136`. Para desarrollo usa `cargo build` (debug) o `cargo run`; para la release, siempre `cargo build --release`.
+
 También puedes ejecutar directamente `app\iniciar-app.bat`: configura `LIBCLANG_PATH`/CMake, actualiza la versión release si hay cambios (si no hay cambios Cargo termina en segundos) y la abre. Si Rust no está instalado pero el `.exe` ya existe, lo abre directamente.
 
 ### Tests
