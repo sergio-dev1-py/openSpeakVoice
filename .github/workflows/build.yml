@@ -1,4 +1,4 @@
-name: Build
+name: Build installers
 
 on:
   push:
@@ -16,20 +16,18 @@ jobs:
         include:
           - os: windows-latest
             label: windows-x64
-            binary: app/src-tauri/target/release/voicetotext.exe
-            asset: VoiceToText-windows-x64.exe
+            formats: nsis
+            llvm_path: C:\Program Files\LLVM\bin
           - os: ubuntu-22.04
             label: linux-x64
-            binary: app/src-tauri/target/release/voicetotext
-            asset: VoiceToText-linux-x64
+            formats: "deb,appimage"
+            llvm_path: /usr/lib/llvm-14/lib
           - os: macos-15
             label: macos-arm64
-            binary: app/src-tauri/target/release/voicetotext
-            asset: VoiceToText-macos-arm64
+            formats: "app,dmg"
           - os: macos-15-intel
             label: macos-x64
-            binary: app/src-tauri/target/release/voicetotext
-            asset: VoiceToText-macos-x64
+            formats: "app,dmg"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -47,19 +45,22 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev \
+          sudo apt-get install -y \
+            build-essential pkg-config cmake clang libclang-dev \
+            libasound2-dev libudev-dev libxdo-dev \
             libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
             libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libxkbcommon-dev libwayland-dev libfontconfig1-dev libxdo-dev \
-            pkg-config cmake clang libclang-dev
-          echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> "$GITHUB_ENV"
+            libxkbcommon-dev libwayland-dev libfontconfig1-dev \
+            libfuse2 patchelf file
+          echo "LIBCLANG_PATH=${{ matrix.llvm_path }}" >> "$GITHUB_ENV"
 
-      - name: Install LLVM (Windows)
+      - name: Install LLVM and NSIS (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install llvm -y --no-progress
-          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+          choco install llvm nsis -y --no-progress
+          "LIBCLANG_PATH=${{ matrix.llvm_path }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Install CMake and LLVM (macOS)
         if: runner.os == 'macOS'
@@ -67,26 +68,66 @@ jobs:
           brew install cmake llvm
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
 
-      - name: Build release
-        run: cargo build --release --manifest-path app/src-tauri/Cargo.toml
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked --version 0.11.8
 
-      # The raw Rust binary is called `voicetotext` on every platform, so give
-      # each release asset a unique, platform-specific name.
-      - name: Package release asset
+      - name: Build installers
+        working-directory: app/src-tauri
+        shell: bash
+        run: cargo packager --release --formats ${{ matrix.formats }}
+
+      - name: Collect platform assets
+        working-directory: app/src-tauri
         shell: bash
         run: |
-          mkdir -p dist
-          cp "${{ matrix.binary }}" "dist/${{ matrix.asset }}"
+          set -e
+          mkdir -p release-assets
+          shopt -s nullglob
+          case "${{ runner.os }}" in
+            Windows)
+              files=(dist/*.exe)
+              test "${#files[@]}" -gt 0
+              cp "${files[0]}" release-assets/VoiceToText-windows-x64-setup.exe
+              ;;
+            Linux)
+              debs=(dist/*.deb)
+              appimages=(dist/*.AppImage)
+              test "${#debs[@]}" -gt 0
+              test "${#appimages[@]}" -gt 0
+              cp "${debs[0]}" release-assets/VoiceToText-linux-x64.deb
+              cp "${appimages[0]}" release-assets/VoiceToText-linux-x64.AppImage
+              ;;
+            macOS)
+              dmgs=(dist/*.dmg)
+              test "${#dmgs[@]}" -gt 0
+              cp "${dmgs[0]}" "release-assets/VoiceToText-${{ matrix.label }}.dmg"
+              ;;
+          esac
+          ls -lh release-assets
 
-      - name: Upload artifact
+      - name: Upload installers as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: VoiceToText-${{ matrix.label }}
-          path: dist/${{ matrix.asset }}
+          path: app/src-tauri/release-assets/*
           if-no-files-found: error
 
-      - name: Release
+      - name: Attach installers to GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/${{ matrix.asset }}
+          name: VoiceToText ${{ github.ref_name }}
+          body: |
+            ## VoiceToText ${{ github.ref_name }}
+
+            Lightweight Rust + Slint voice-to-text widget.
+
+            ### Installers
+            - **Windows:** `VoiceToText-windows-x64-setup.exe`
+            - **Linux:** `VoiceToText-linux-x64.deb` / `VoiceToText-linux-x64.AppImage`
+            - **macOS:** `VoiceToText-macos-arm64.dmg` / `VoiceToText-macos-x64.dmg`
+
+            The installers are unsigned. Source and build instructions are in the
+            [README](https://github.com/sergio-dev1-py/openSpeakVoice#readme).
+          files: app/src-tauri/release-assets/*
+          fail_on_unmatched_files: true

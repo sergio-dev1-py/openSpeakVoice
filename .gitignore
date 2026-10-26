@@ -10,12 +10,21 @@ publish/
 # Rust / Slint
 app/src-tauri/target/
 app/src-tauri/gen/
+app/src-tauri/dist/
+app/src-tauri/release-assets/
+dist/
 
 # Generated icon sources (kept: tray-white/black used at runtime)
 *.heapsnapshot
 
 # Logs
 *.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
 
 # Local build toolchain downloads (LLVM, VS bootstrapper)
 tools/

@@ -4,8 +4,49 @@ version = "2.0.0"
 description = "Voice-to-text pill widget: global hotkey transcription & translation (Groq / local Whisper)"
 authors = ["sergio-dev1-py"]
 license = "MIT"
+repository = "https://github.com/sergio-dev1-py/openSpeakVoice"
+homepage = "https://github.com/sergio-dev1-py/openSpeakVoice"
 edition = "2021"
 rust-version = "1.92"
+
+[package.metadata.packager]
+product-name = "VoiceToText"
+identifier = "com.sergiodev1py.voicetotext"
+publisher = "sergio-dev1-py"
+description = "Floating voice-to-text widget with global hotkey, transcription and translation."
+long-description = "VoiceToText is a lightweight, always-on-top voice-to-text pill for Windows, Linux and macOS. Press the global hotkey, speak, and the recognized (or translated) text is inserted into the focused application. It supports Groq cloud transcription and local Whisper models, two API keys with automatic rotation, light/dark themes and a system tray icon."
+homepage = "https://github.com/sergio-dev1-py/openSpeakVoice"
+authors = ["sergio-dev1-py"]
+copyright = "Copyright (c) 2026 sergio-dev1-py"
+license-file = "../../LICENSE"
+category = "Utility"
+before-packaging-command = "cargo build --release"
+out-dir = "dist"
+binaries-dir = "target/release"
+icons = [
+  "icons/32x32.png",
+  "icons/64x64.png",
+  "icons/128x128.png",
+  "icons/128x128@2x.png",
+  "icons/icon.icns",
+  "icons/icon.ico",
+]
+
+[package.metadata.packager.macos]
+info-plist-path = "Info.plist"
+minimum-system-version = "12.0"
+
+[package.metadata.packager.deb]
+depends = [
+  "libc6",
+  "libasound2",
+  "libx11-6",
+  "libxcb1",
+  "libxkbcommon0",
+  "libwayland-client0",
+  "libxdo3",
+  "libfontconfig1",
+]
 
 [lib]
 name = "voicetotext_lib"

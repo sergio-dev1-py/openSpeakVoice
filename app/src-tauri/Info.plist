@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>VoiceToText records your voice only while the recording hotkey is active, so it can transcribe or translate it locally or through Groq.</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright (c) 2026 sergio-dev1-py</string>
+</dict>
+</plist>

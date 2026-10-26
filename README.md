@@ -1,155 +1,293 @@
-# VoiceToText Widget
+<p align="center">
+  <a href="https://github.com/sergio-dev1-py/openSpeakVoice">
+    <img src="app/src-tauri/icons/128x128.png" width="96" alt="VoiceToText logo">
+  </a>
+</p>
 
-Píldora flotante de voz-a-texto para escritorio, escrita en **Rust + Slint**. Sustituye por completo la versión Tauri/WebView2: **no usa Chromium, WebView2, Node.js ni un frontend web**.
+<h1 align="center">VoiceToText</h1>
 
-Pulsa el atajo global (por defecto **F8**), habla, vuelve a pulsar y el texto se transcribe e inserta automáticamente donde tengas el cursor.
+<p align="center">
+  <strong>Speak. Transcribe. Translate. Anywhere.</strong><br>
+  A tiny always-on-top voice-to-text pill for Windows, Linux and macOS.
+</p>
 
-![píldora](app/src-tauri/icons/128x128.png)
+<p align="center">
+  <a href="https://github.com/sergio-dev1-py/openSpeakVoice/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sergio-dev1-py/openSpeakVoice?style=flat-square"></a>
+  <a href="https://github.com/sergio-dev1-py/openSpeakVoice/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/sergio-dev1-py/openSpeakVoice/build.yml?branch=main&style=flat-square"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square">
+  <img alt="Linux" src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat-square">
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-12%2B-111111?style=flat-square">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-1.92%2B-000000?style=flat-square&logo=rust">
+  <img alt="Slint" src="https://img.shields.io/badge/Slint-1.18-2379F4?style=flat-square">
+</p>
 
-## Características
+<p align="center">
+  <strong>English</strong> |
+  <a href="README.zh.md">简体中文</a> |
+  <a href="README.zht.md">繁體中文</a> |
+  <a href="README.ko.md">한국어</a> |
+  <a href="README.de.md">Deutsch</a> |
+  <a href="README.es.md">Español</a> |
+  <a href="README.fr.md">Français</a> |
+  <a href="README.it.md">Italiano</a> |
+  <a href="README.da.md">Dansk</a> |
+  <a href="README.ja.md">日本語</a> |
+  <a href="README.pl.md">Polski</a> |
+  <a href="README.ru.md">Русский</a> |
+  <a href="README.bs.md">Bosanski</a> |
+  <a href="README.ar.md">العربية</a> |
+  <a href="README.no.md">Norsk</a> |
+  <a href="README.br.md">Português (Brasil)</a> |
+  <a href="README.th.md">ไทย</a> |
+  <a href="README.tr.md">Türkçe</a> |
+  <a href="README.uk.md">Українська</a> |
+  <a href="README.bn.md">বাংলা</a> |
+  <a href="README.gr.md">Ελληνικά</a> |
+  <a href="README.vi.md">Tiếng Việt</a>
+</p>
 
-- **Píldora 121×32 px** sin marco, transparente, siempre visible y arrastrable.
-- **Botón ▶ / ■** integrado para iniciar o detener la grabación (además del atajo global).
-- **Clic derecho en cualquier parte de la píldora** para abrir el menú contextual tematizado.
-- **Temas claro/oscuro** aplicados a píldora, menú, Ajustes, API Keys, Modelos, toast y bandeja del sistema.
-  - Tema claro: píldora blanca con borde negro y rayo negro.
-  - Tema oscuro: píldora oscura con rayo blanco.
-  - El color/opacidad del borde y el modo multicolor se aplican a la onda y al borde activo.
-- **Onda de audio real** con historial de barras: se mueve al hablar y queda estática en reposo. No se actualiza ni redibuja cuando no hay grabación.
-- **Ventanas bajo demanda**: Ajustes/API Keys/Modelos, menú y toast se crean al abrirlos y se liberan al cerrar.
-- **Límite de grabación de 5 minutos**: al alcanzarlo se detiene y transcribe automáticamente.
-- **Arrastre nativo** (Windows) y persistencia automática de la posición.
-- **Dos proveedores de reconocimiento**:
-  - **Groq (nube)** — `whisper-large-v3` con dos API keys y rotación automática (19 req/min por key).
-  - **Whisper (local)** — modelos ggml tiny/base/small/medium/large-v3 descargados y ejecutados sin conexión.
-- **Modos transcripción y traducción**:
-  - Traducción con `openai/gpt-oss-120b`.
-  - Fallback automático a `openai/gpt-oss-20b` si el modelo principal no está disponible.
-- **93 idiomas** de reconocimiento (selector con nombres nativos y código).
-- **Atajo global configurable** (F1–F24, letras, dígitos, Space, etc. + Ctrl/Alt/Shift/Win).
-- **Inyección de texto** por portapapeles + Ctrl+V (Cmd+V en macOS), con fallback de tipeo.
-- **Bandeja del sistema** con icono adaptativo al tema: clic izquierdo muestra la píldora, clic derecho abre Mostrar/Ocultar/Salir.
-- **settings.json compatible** con la versión C#/Tauri: reutiliza `%LOCALAPPDATA%\VoiceToTextWidget` y los modelos ya descargados.
+<p align="center">
+  <img src="docs/preview.png" alt="VoiceToText preview" width="100%">
+</p>
 
-## Motor de renderizado
+## Overview
 
-La app fuerza el **renderizador software de Slint** (`SLINT_BACKEND=winit-software`).
+VoiceToText is a compact desktop widget that turns speech into text without
+breaking your flow. It stays as a **121 × 32 px pill** on top of your windows,
+listens through a global hotkey and inserts the result directly into the
+application you are using.
 
-Motivo: el equipo de destino usa una GPU Intel HD 3000 cuyo driver OpenGL no soporta crear el contexto que necesita FemtoVG. El renderizador software:
+It is a native **Rust + Slint** application: no Chromium, no WebView2, no
+Node.js and no browser process. The UI uses Slint's software renderer, so it
+also works on machines without a usable OpenGL context.
 
-- No necesita contexto OpenGL/Vulkan/Direct3D.
-- Mantiene la transparencia por píxel de la píldora.
-- Usa un único proceso y muy poca memoria.
-- Para una ventana de 121×32 px y ventanas de configuración ocasionales, el coste de CPU es mínimo.
+## Features
 
-Si quieres probar otro backend, define `SLINT_BACKEND` antes de arrancar (por ejemplo `winit-software`).
+- **Tiny always-on-top pill** — 121 × 32 px, rounded, transparent, draggable
+  and hidden from the taskbar.
+- **Global hotkey** — press once to record, again to stop and transcribe.
+  Fully configurable (F1–F24, letters, digits and modifiers).
+- **Two speech providers**
+  - **Groq Cloud** with `whisper-large-v3`.
+  - **Local Whisper** with `tiny`, `base`, `small`, `medium` or `large-v3`
+    ggml models. Models are downloaded from inside the app.
+- **Transcription and translation** — translate with
+  `openai/gpt-oss-120b` and automatically fall back to
+  `openai/gpt-oss-20b`.
+- **Dual API keys** — two Groq keys with automatic rotation (19 requests per
+  minute per key) and per-minute usage indicators.
+- **93 recognition languages** and a separate target language for translation.
+- **Light and dark themes** across the pill, menu, settings, API keys, models,
+  toast notifications and tray icon.
+- **On-demand windows** — settings, menu and toast are created only when
+  needed and released afterwards.
+- **Five-minute recording limit** with automatic stop and transcription.
+- **Native drag** on Windows with saved position.
+- **Text injection** through the clipboard (`Ctrl+V` / `Cmd+V`) with a typing
+  fallback.
+- **System tray** with show/hide/quit actions.
+- **Local data** — API keys and settings stay on your machine, never in the
+  repository.
 
-## Consumo medido (release, Windows)
+## Download
 
-- **1 solo proceso** (sin procesos auxiliares de WebView2/Chromium).
-- **~16–20 MB** de memoria de trabajo en reposo; ~22 MB con Ajustes abierta.
-- **~0,1 % de un núcleo** en reposo (medido durante 15 s), sin animación de onda.
-- Ejecutable release de **~15 MB**.
-- Referencia de la versión Tauri corregida: ~95 MB privados y 6 procesos en reposo.
+Get the latest installers from the
+[**Releases page**](https://github.com/sergio-dev1-py/openSpeakVoice/releases/latest).
 
-La onda solo actualiza la UI a 30 fps mientras se está grabando; en reposo el temporizador baja a 10 Hz y no modifica la onda.
+| Platform | Package |
+| --- | --- |
+| Windows 10/11 (x64) | `VoiceToText-windows-x64-setup.exe` (NSIS installer) |
+| Linux (x64) | `VoiceToText-linux-x64.deb` or `VoiceToText-linux-x64.AppImage` |
+| macOS 12+ (Apple Silicon) | `VoiceToText-macos-arm64.dmg` |
+| macOS 12+ (Intel) | `VoiceToText-macos-x64.dmg` |
 
-## Requisitos
+> [!NOTE]
+> The installers are not code-signed. Windows SmartScreen and macOS Gatekeeper
+> may show a warning. The source code is public and every package is built by
+> the GitHub Actions workflow in this repository.
 
-| Plataforma | Requisitos |
-|---|---|
-| Windows 10/11 | Rust stable (MSVC), Visual Studio Build Tools (C++), CMake y LLVM/libclang. Windows probado. |
-| Linux | Rust stable, ALSA, X11/Wayland dev, libxdo, CMake y libclang. Compilación no probada en esta máquina. |
-| macOS 12+ | Rust stable, Xcode Command Line Tools, CMake y libclang. Permisos de Micrófono/Accesibilidad. Compilación no probada en esta máquina. |
+## Quick start
 
-No hace falta Node.js, npm, WebView2 ni WebKitGTK.
+1. Download and install the package for your platform.
+2. Launch **VoiceToText**. The pill appears near the last saved position.
+3. Press **F8** (or your configured hotkey), speak, and press it again.
+4. The recognized text is inserted into the focused application.
 
-### Variables de entorno en Windows
+For the cloud provider, open the pill menu → **API Keys…** and add one or two
+Groq API keys. For offline use, choose **Whisper (local)** and download a model
+from **Modelos…**.
 
-`whisper-rs` usa `bindgen`, que necesita `libclang`:
+> [!TIP]
+> If the pill is not visible, open the Windows notification-area overflow or
+> the macOS/Linux tray and click the VoiceToText icon. The first hotkey press
+> after hiding the pill only brings it back; the next one starts recording.
 
-```bat
-set "LIBCLANG_PATH=C:\ruta\a\llvm\bin"
-set "PATH=%PATH%;C:\ruta\a\cmake\bin"
+## Usage
+
+| Action | How |
+| --- | --- |
+| Start / stop recording | `F8` or the pill button |
+| Move the pill | Left-click and drag |
+| Open the context menu | Right-click anywhere on the pill |
+| Close the menu | `Escape`, click outside, or focus another window |
+| Open settings | Right-click → **Ajustes** |
+| Configure keys | Right-click → **API Keys…** |
+| Manage local models | Right-click → **Modelos…** |
+| Show/hide | Tray icon → **Mostrar / Ocultar** |
+| Quit | Pill menu or tray → **Salir** |
+
+## How it works
+
+```text
+Global hotkey / pill
+        │
+        ▼
+cpal microphone  ──►  16 kHz mono PCM
+        │
+        ├──► Groq: whisper-large-v3
+        └──► Local: whisper.cpp (ggml)
+                        │
+                        ▼
+              optional translation
+            openai/gpt-oss-120b → 20b
+                        │
+                        ▼
+       clipboard + Ctrl/Cmd+V → focused app
 ```
 
-En este repositorio el toolchain local está en:
+The UI state is polled by a single lightweight timer. While idle the wave is
+static and the timer runs at 10 Hz; while recording it rises to 30 Hz. All
+windows are Slint components; only the pill is created at startup.
 
-```
-tools\clang+llvm-18.1.8-x86_64-pc-windows-msvc\bin
-```
+## Configuration
 
-## Compilación
+Settings are stored outside the repository:
+
+| OS | Location |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\VoiceToTextWidget\settings.json` |
+| Linux | `~/.local/share/VoiceToTextWidget/settings.json` |
+| macOS | `~/Library/Application Support/VoiceToTextWidget/settings.json` |
+
+The format is compatible with the previous C#/Tauri versions, so existing API
+keys, preferences and downloaded Whisper models are reused. Models live in the
+`Models` folder next to `settings.json`; logs are written to `app.log`.
+
+### API keys
+
+VoiceToText never ships with API keys. Add your own Groq keys in
+**API Keys…**. Keys are stored locally in `settings.json` and are used only to
+call the Groq API directly from your machine.
+
+## Build from source
+
+### Requirements
+
+| Platform | Requirements |
+| --- | --- |
+| Windows | Rust stable (MSVC), Visual Studio Build Tools, CMake, LLVM/libclang |
+| Linux | Rust stable, ALSA, X11/Wayland, libxdo, CMake, libclang |
+| macOS | Rust stable, Xcode Command Line Tools, CMake, LLVM/libclang |
+
+`whisper-rs` uses `bindgen`, which requires `libclang`. On Windows the helper
+script below can configure the local toolchain automatically.
 
 ```bat
 cd app\src-tauri
+set "LIBCLANG_PATH=C:\path\to\llvm\bin"
 cargo build --release
-```
-
-El ejecutable queda en:
-
-```
-app\src-tauri\target\release\voicetotext.exe
-```
-
-> **No uses `cargo rustc --release -- -C lto=off`.** El perfil release compila todas las dependencias con `lto = "fat"`; mezclar un binario sin LTO produce errores `LNK2001`/`LNK1136`. Para desarrollo usa `cargo build` (debug) o `cargo run`; para la release, siempre `cargo build --release`.
-
-También puedes ejecutar directamente `app\iniciar-app.bat`: configura `LIBCLANG_PATH`/CMake, actualiza la versión release si hay cambios (si no hay cambios Cargo termina en segundos) y la abre. Si Rust no está instalado pero el `.exe` ya existe, lo abre directamente.
-
-### Tests
-
-```bat
-cd app\src-tauri
 cargo test
 ```
 
-## Uso
+The executable is written to `app/src-tauri/target/release/voicetotext.exe`.
 
-- **F8** (o el atajo configurado): iniciar/detener grabación. Si la píldora está oculta, el primer F8 la muestra.
-- **Clic izquierdo + arrastrar** sobre la píldora: moverla. La posición se guarda.
-- **Clic derecho** sobre la píldora: menú de Ajustes, API Keys, proveedor, modo, idioma destino, ocultar y salir.
-- **Bandeja del sistema**: clic izquierdo muestra la píldora; clic derecho abre el menú nativo.
-- **Ajustes**: idioma de reconocimiento, modo, idioma destino, atajo, tema, color/opacidad del borde y multicolor. El campo del atajo acepta F1–F24, letras, dígitos, `Space`, `Enter`, `PageUp`, etc., combinados con Ctrl/Alt/Shift/Win.
-- **API Keys**: dos claves de Groq con contador de uso por minuto.
-- **Modelos**: descargar/cancelar/borrar modelos locales y activar/desactivar aceleración GPU (el ajuste se guarda; whisper.cpp se ejecuta en CPU salvo que se compile con soporte GPU).
+Alternatively, run `app\iniciar-app.bat`: it configures the local
+`LIBCLANG_PATH`/CMake paths, updates the release if needed and opens it.
 
-## Estructura
+> [!WARNING]
+> Do not build the release with `-C lto=off`: this workspace uses `lto = "fat"`
+> and mixing a non-LTO binary produces `LNK2001`/`LNK1136` errors. For quick
+> iterations use the debug profile.
 
+### Installers
+
+Packaging is done with [cargo-packager](https://github.com/crabnebula-dev/cargo-packager):
+
+```bash
+cargo install cargo-packager --locked
+cd app/src-tauri
+
+# Windows
+cargo packager --release --formats nsis
+
+# Linux
+cargo packager --release --formats deb,appimage
+
+# macOS
+cargo packager --release --formats app,dmg
 ```
+
+The CI workflow builds the same packages on native runners and attaches them
+to a GitHub release.
+
+## Project structure
+
+```text
 app/
-├─ iniciar-app.bat
+├─ iniciar-app.bat             # local Windows launcher
 └─ src-tauri/
    ├─ Cargo.toml
-   ├─ build.rs              # compila ui/app.slint
-   ├─ ui/app.slint          # píldora, menú, gestión, toast, bandeja
-   ├─ icons/                # rayo monocromático e iconos de la app
+   ├─ build.rs                 # compiles the Slint UI
+   ├─ ui/app.slint             # pill, menu, settings, toast, tray
+   ├─ icons/                   # app, tray and bolt icons
    └─ src/
-      ├─ lib.rs             # wiring Slint ↔ core, ventanas, atajos, bandeja
-      ├─ core.rs            # estado, grabación, transcripción, traducción
-      ├─ audio.rs           # captura cpal + resample a 16 kHz
-      ├─ whisper.rs         # modelos ggml + whisper.cpp
-      ├─ groq.rs            # Groq API (STT + traducción)
-      ├─ inject.rs          # portapapeles/Ctrl+V y fallback de tipeo
-      ├─ hotkey.rs          # nombres de teclas ⇄ W3C
-      ├─ languages.rs       # tablas de idiomas
-      ├─ settings.rs        # settings.json compatible con la versión C#
-      └─ logger.rs          # app.log
+      ├─ lib.rs                # Slint wiring, windows, hotkey, tray, drag
+      ├─ core.rs               # state, recording, STT, translation
+      ├─ audio.rs              # cpal capture + 16 kHz resampling
+      ├─ whisper.rs            # local ggml models + whisper.cpp
+      ├─ groq.rs               # Groq STT + translation + key rotation
+      ├─ inject.rs             # clipboard/Ctrl+V injection
+      ├─ hotkey.rs             # C#/W3C key-name mapping
+      ├─ languages.rs          # language tables
+      ├─ settings.rs           # compatible settings.json
+      └─ logger.rs             # app.log
 ```
 
-## Datos y configuración
+## Performance
 
-- Ajustes: `%LOCALAPPDATA%\VoiceToTextWidget\settings.json`
-- Modelos: `%LOCALAPPDATA%\VoiceToTextWidget\Models\ggml-*.bin`
-- Log: `%LOCALAPPDATA%\VoiceToTextWidget\app.log`
+Measured on the reference Windows machine (release, idle):
 
-## Limitaciones conocidas
+- **One process**, no WebView2/Chromium helpers.
+- **~16–20 MB** working set in idle; ~22 MB with settings open.
+- **~0.1 % of one CPU core** in idle, with a static waveform.
+- Release executable: **~15 MB**.
 
-- El arrastre nativo y la colocación precisa de ventanas están implementados para **Windows**. En Linux/macOS no se ha probado la compilación en esta máquina; además, la píldora no se puede arrastrar con el ratón y las ventanas usan la posición por defecto del sistema.
-- El CI publica **binarios sin instalador** con nombres por plataforma (`VoiceToText-windows-x64.exe`, `VoiceToText-linux-x64`, `VoiceToText-macos-arm64`, `VoiceToText-macos-x64`). No se generan NSIS/MSI/DMG/AppImage.
-- La aceleración GPU de Whisper depende de cómo se compile `whisper-rs`; el checkbox solo guarda la preferencia.
-- En macOS hay que conceder permisos de Micrófono y Accesibilidad.
+## Limitations
 
-## Historial
+- Installers are currently **unsigned**; SmartScreen/Gatekeeper warnings are
+  expected until code-signing certificates are configured.
+- Linux and macOS packages are built by CI on their native runners; they are
+  not compiled from the Windows development machine.
+- Dragging above an **elevated** Task Manager can be restricted by Windows UIPI
+  when VoiceToText runs at medium integrity. Run both at the same elevation if
+  you need to drag the pill while Task Manager is foreground.
+- Local Whisper GPU acceleration depends on how `whisper-rs` was compiled; the
+  checkbox stores the preference.
+- On macOS, microphone and accessibility permissions must be granted on first
+  use.
 
-- **v2.0.0** — Migración completa a **Slint + Rust**. Sin Tauri, WebView2 ni frontend TypeScript. Píldora/menú/gestión/toast/bandeja nativos de Slint, renderizador software y un solo proceso.
-- **v1.4.0** — Versión original C#/WinForms (se conserva en `VoiceToTextWidget/` como referencia).
+## Contributing
+
+Issues and pull requests are welcome. Please keep changes focused, run
+`cargo fmt`, `cargo clippy` and `cargo test`, and describe the platform you
+tested on. For UI changes, include a screenshot or a short recording.
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+<p align="center">
+  Made with Rust, Slint and a very small pill.<br>
+  If VoiceToText saves you time, consider leaving a star ⭐
+</p>
