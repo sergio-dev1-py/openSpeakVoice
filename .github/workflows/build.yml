@@ -54,13 +54,16 @@ jobs:
             libfuse2 patchelf file
           echo "LIBCLANG_PATH=${{ matrix.llvm_path }}" >> "$GITHUB_ENV"
 
-      - name: Install LLVM and NSIS (Windows)
+      # cargo-packager downloads the NSIS toolchain it needs, so only LLVM
+      # (preinstalled on the Windows runners) has to be exposed to bindgen.
+      - name: Configure LLVM (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install llvm nsis -y --no-progress
+          if (-not (Test-Path "C:\Program Files\LLVM\bin\libclang.dll")) {
+            throw "LLVM/libclang not found on the Windows runner"
+          }
           "LIBCLANG_PATH=${{ matrix.llvm_path }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Install CMake and LLVM (macOS)
         if: runner.os == 'macOS'
@@ -111,9 +114,9 @@ jobs:
           shopt -s nullglob
           case "${{ runner.os }}" in
             Windows)
-              files=(dist/*.exe)
-              test "${#files[@]}" -gt 0
-              cp "${files[0]}" release-assets/VoiceToText-windows-x64-setup.exe
+              setups=(dist/*-setup.exe)
+              test "${#setups[@]}" -gt 0
+              cp "${setups[0]}" release-assets/VoiceToText-windows-x64-setup.exe
               ;;
             Linux)
               debs=(dist/*.deb)
@@ -157,3 +160,4 @@ jobs:
             [README](https://github.com/sergio-dev1-py/openSpeakVoice#readme).
           files: app/src-tauri/release-assets/*
           fail_on_unmatched_files: true
+          overwrite_files: true
