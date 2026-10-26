@@ -34,6 +34,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const WAVE_BARS: usize = 16;
+const PILL_WIDTH: f32 = 121.0;
+const PILL_HEIGHT: f32 = 32.0;
 const REST_LEVEL: f32 = 0.06;
 /// Static symmetric wave shown while idle (same silhouette as the legacy
 /// widget, without any animation or repaint loop).
@@ -1740,9 +1742,6 @@ fn apply_tool_window(
 fn apply_rounded_region(window: &slint::Window) {
     use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, DeleteObject, SetWindowRgn};
 
-    const PILL_WIDTH: f32 = 121.0;
-    const PILL_HEIGHT: f32 = 32.0;
-
     let Some(hwnd) = hwnd_of(window) else { return };
     let hwnd = hwnd as _;
     // winit can grow the native window to 136x39 to accommodate its internal
@@ -1834,6 +1833,31 @@ fn center_window(window: &slint::Window) {
 #[cfg(not(windows))]
 fn center_window(_window: &slint::Window) {}
 
+/// Bounds of the visible 121x32 pill, ignoring the extra native client area
+/// winit reserves around it. Used to anchor the menu and toast.
+#[cfg(windows)]
+fn visible_pill_rect(pill: &slint::Window) -> Option<windows_sys::Win32::Foundation::RECT> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
+
+    let hwnd = hwnd_of(pill)? as _;
+    unsafe {
+        let mut outer: RECT = std::mem::zeroed();
+        if GetWindowRect(hwnd, &mut outer) == 0 {
+            return None;
+        }
+        let scale = pill.scale_factor().max(0.5);
+        let width = (PILL_WIDTH * scale).round() as i32;
+        let height = (PILL_HEIGHT * scale).round() as i32;
+        Some(RECT {
+            left: outer.left,
+            top: outer.top,
+            right: outer.left + width,
+            bottom: outer.top + height,
+        })
+    }
+}
+
 #[cfg(windows)]
 fn position_toast(toast: &slint::Window, pill: &slint::Window) {
     use windows_sys::Win32::Foundation::RECT;
@@ -1846,13 +1870,13 @@ fn position_toast(toast: &slint::Window, pill: &slint::Window) {
     let (Some(pill_hwnd), Some(toast_hwnd)) = (hwnd_of(pill), hwnd_of(toast)) else {
         return;
     };
+    let Some(pill_rect) = visible_pill_rect(pill) else {
+        return;
+    };
     let (pill_hwnd, toast_hwnd) = (pill_hwnd as _, toast_hwnd as _);
     unsafe {
-        let mut pill_rect: RECT = std::mem::zeroed();
         let mut toast_rect: RECT = std::mem::zeroed();
-        if GetWindowRect(pill_hwnd, &mut pill_rect) == 0
-            || GetWindowRect(toast_hwnd, &mut toast_rect) == 0
-        {
+        if GetWindowRect(toast_hwnd, &mut toast_rect) == 0 {
             return;
         }
         let monitor = MonitorFromWindow(pill_hwnd, MONITOR_DEFAULTTONEAREST);
@@ -1924,13 +1948,13 @@ fn position_menu(menu: &slint::Window, pill: &slint::Window) {
     let (Some(menu_hwnd), Some(pill_hwnd)) = (hwnd_of(menu), hwnd_of(pill)) else {
         return;
     };
+    let Some(pill_rect) = visible_pill_rect(pill) else {
+        return;
+    };
     let (menu_hwnd, pill_hwnd) = (menu_hwnd as _, pill_hwnd as _);
     unsafe {
         let mut menu_rect: RECT = std::mem::zeroed();
-        let mut pill_rect: RECT = std::mem::zeroed();
-        if GetWindowRect(menu_hwnd, &mut menu_rect) == 0
-            || GetWindowRect(pill_hwnd, &mut pill_rect) == 0
-        {
+        if GetWindowRect(menu_hwnd, &mut menu_rect) == 0 {
             return;
         }
         let monitor = MonitorFromWindow(pill_hwnd, MONITOR_DEFAULTTONEAREST);
