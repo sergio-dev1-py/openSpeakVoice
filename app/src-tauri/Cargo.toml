@@ -71,7 +71,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
 cpal = "0.15"
-whisper-rs = "0.15.1"
+whisper-rs = "0.16.0"
 arboard = "3"
 enigo = "0.2"
 dirs = "5"
