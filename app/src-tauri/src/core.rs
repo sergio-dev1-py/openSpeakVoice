@@ -178,13 +178,9 @@ impl AppCore {
                         .unwrap_or_else(|e| Err(format!("Error interno: {e}")))
                     {
                         Ok(()) => {
+                            // Success is silent: the inserted text itself is the
+                            // feedback. Only errors should open a toast.
                             log::info!("text injected");
-                            let msg = if settings.app_language == "en" {
-                                "Text inserted"
-                            } else {
-                                "Texto insertado"
-                            };
-                            self.info(msg);
                         }
                         Err(e) => self.error(e),
                     }

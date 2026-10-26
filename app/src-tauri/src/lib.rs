@@ -165,6 +165,8 @@ struct AppUi {
     pill_chrome_ready: Cell<bool>,
     drag_active: Arc<AtomicBool>,
     drag_was_active: Cell<bool>,
+    overlay_was_open: Cell<bool>,
+    last_topmost: Cell<Instant>,
     last_seen_pos: Cell<(i32, i32)>,
     saved_pos: Cell<(i32, i32)>,
     pending_pos_save: Cell<Option<Instant>>,
@@ -201,6 +203,8 @@ impl AppUi {
             pill_chrome_ready: Cell::new(false),
             drag_active: Arc::new(AtomicBool::new(false)),
             drag_was_active: Cell::new(false),
+            overlay_was_open: Cell::new(false),
+            last_topmost: Cell::new(Instant::now()),
             last_seen_pos: Cell::new(pos),
             saved_pos: Cell::new(pos),
             pending_pos_save: Cell::new(None),
@@ -384,6 +388,11 @@ impl AppUi {
             return;
         }
         self.ensure_pill_chrome();
+        if self.last_topmost.get().elapsed() >= Duration::from_millis(500) {
+            self.last_topmost.set(Instant::now());
+            enforce_topmost(self.pill.window());
+            self.nudge_pill_repaint();
+        }
         self.core.stop_if_too_long();
         self.poll_hotkey();
         self.check_menu_outside_click();
@@ -397,13 +406,17 @@ impl AppUi {
         // surface must be repainted afterwards, otherwise the transparent
         // pixels reveal whatever is behind the pill (a browser tab, usually).
         let dragging = self.drag_active.load(Ordering::Relaxed);
-        if dragging || self.drag_was_active.get() {
+        let overlay_open = self.menu.borrow().is_some()
+            || self.toast.borrow().is_some()
+            || self.management.borrow().is_some();
+        let overlay_changed = overlay_open != self.overlay_was_open.get();
+        if dragging || self.drag_was_active.get() || overlay_open || overlay_changed {
             // Force a full-surface repaint; request_redraw alone only asks for
             // a frame, while the software renderer may have no damage region.
-            self.pill.set_repaint_flash(!self.pill.get_repaint_flash());
-            self.pill.window().request_redraw();
+            self.nudge_pill_repaint();
         }
         self.drag_was_active.set(dragging);
+        self.overlay_was_open.set(overlay_open);
 
         let wanted = if dragging {
             DRAG_TICK_MS
@@ -571,6 +584,14 @@ impl AppUi {
         }
     }
 
+    /// Force a full software-renderer repaint of the pill. Showing, hiding or
+    /// moving another transparent Slint window can leave the pill surface
+    /// stale, which exposes whatever is behind it.
+    fn nudge_pill_repaint(&self) {
+        self.pill.set_repaint_flash(!self.pill.get_repaint_flash());
+        self.pill.window().request_redraw();
+    }
+
     fn hide_pill(&self) {
         self.close_menu();
         self.save_position_now();
@@ -616,7 +637,9 @@ impl AppUi {
     /// pointer moves are not reliable; follow the OS cursor instead.
     #[cfg(windows)]
     fn begin_drag(&self) {
+        log::info!("pill left press: begin drag");
         self.close_menu();
+        enforce_topmost(self.pill.window());
         use windows_sys::Win32::Foundation::{POINT, RECT};
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
         use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -701,6 +724,11 @@ impl AppUi {
     /// Opens the context menu after the triggering release has been fully
     /// processed, so the same click can't activate the item under the cursor.
     fn request_menu(self: &Rc<Self>, x: f32, y: f32) {
+        // The click/open sequence can invalidate the transparent pill surface.
+        self.nudge_pill_repaint();
+        self.tick_ms.set(RECORDING_TICK_MS);
+        self.timer
+            .set_interval(Duration::from_millis(RECORDING_TICK_MS));
         let weak = Rc::downgrade(self);
         Timer::single_shot(Duration::from_millis(50), move || {
             if let Some(ui) = weak.upgrade() {
@@ -739,10 +767,16 @@ impl AppUi {
             self.menu.borrow_mut().take();
             return;
         }
+        self.nudge_pill_repaint();
+        self.tick_ms.set(RECORDING_TICK_MS);
+        self.timer
+            .set_interval(Duration::from_millis(RECORDING_TICK_MS));
         apply_tool_window(menu.window(), false, true, false);
         position_menu(menu.window(), self.pill.window());
         focus_window(menu.window());
         menu.invoke_focus_menu();
+        menu.set_repaint_flash(true);
+        menu.window().request_redraw();
         self.menu_opened_at.set(Some(Instant::now()));
 
         // The native window is realized by the event loop slightly later.
@@ -762,8 +796,12 @@ impl AppUi {
             return;
         }
         // The handle is available now; retry the overlay chrome that could not
-        // be applied immediately after show().
+        // be applied immediately after show(). Toggle a full-surface nudge so
+        // the software renderer repaints the menu instead of leaving it
+        // transparent over the window below.
         let _ = apply_tool_window(menu.window(), false, true, false);
+        menu.set_repaint_flash(!menu.get_repaint_flash());
+        menu.window().request_redraw();
         position_menu(menu.window(), self.pill.window());
         focus_window(menu.window());
         menu.invoke_focus_menu();
@@ -856,6 +894,10 @@ impl AppUi {
                 let _ = menu.hide();
             });
         }
+        self.nudge_pill_repaint();
+        self.tick_ms.set(RECORDING_TICK_MS);
+        self.timer
+            .set_interval(Duration::from_millis(RECORDING_TICK_MS));
     }
 
     fn check_menu_outside_click(&self) {
@@ -1033,6 +1075,10 @@ impl AppUi {
             log::warn!("failed to show toast: {e}");
             return;
         }
+        self.nudge_pill_repaint();
+        self.tick_ms.set(RECORDING_TICK_MS);
+        self.timer
+            .set_interval(Duration::from_millis(RECORDING_TICK_MS));
         apply_tool_window(toast.window(), true, true, false);
         position_toast(toast.window(), self.pill.window());
         let ms = if is_error {
@@ -1090,6 +1136,7 @@ impl AppUi {
                 let _ = toast.hide();
             });
         }
+        self.nudge_pill_repaint();
     }
 
     // ——— management window ———
@@ -1105,6 +1152,7 @@ impl AppUi {
             self.populate_management(&win, view);
             apply_management_palette(&win, self.visual.borrow().dark);
             if win.show().is_ok() {
+                self.nudge_pill_repaint();
                 apply_tool_window(win.window(), false, false, false);
                 center_window(win.window());
                 focus_window(win.window());
@@ -1128,6 +1176,7 @@ impl AppUi {
             self.management.borrow_mut().take();
             return;
         }
+        self.nudge_pill_repaint();
         apply_tool_window(win.window(), false, false, false);
         center_window(win.window());
         focus_window(win.window());
@@ -1207,6 +1256,7 @@ impl AppUi {
                 let _ = win.hide();
             });
         }
+        self.nudge_pill_repaint();
     }
 
     fn populate_management(&self, win: &ManagementWindow, view: i32) {
@@ -1687,6 +1737,32 @@ fn hwnd_of(window: &slint::Window) -> Option<isize> {
 fn hwnd_of(_window: &slint::Window) -> Option<isize> {
     None
 }
+
+/// Keep the widget above other topmost windows (Task Manager, browsers, etc.).
+#[cfg(windows)]
+fn enforce_topmost(window: &slint::Window) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+    let Some(hwnd) = hwnd_of(window) else { return };
+    if !window.is_visible() {
+        return;
+    }
+    unsafe {
+        SetWindowPos(
+            hwnd as _,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn enforce_topmost(_window: &slint::Window) {}
 
 #[cfg(windows)]
 fn apply_tool_window(

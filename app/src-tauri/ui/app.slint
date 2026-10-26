@@ -280,6 +280,7 @@ export component MenuWindow inherits Window {
     in property <bool> can-hide: true;
     in property <string> provider-label: "Groq";
     in property <string> mode-label: "Transcripción";
+    in property <bool> repaint-flash: false;
 
     callback close-menu();
     callback open-settings();
@@ -365,6 +366,12 @@ export component MenuWindow inherits Window {
             Rectangle { height: 1px; background: root.dark ? #ffffff14 : #0f172a14; }
             MenuRow { dark: root.dark; label: "Ocultar widget"; enabled: root.can-hide; clicked => { root.hide-pill(); } }
             MenuRow { dark: root.dark; label: "Salir"; enabled: root.can-hide; danger: true; clicked => { root.quit-app(); } }
+        }
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: root.repaint-flash ? #01000000 : #00000000;
         }
     }
 }
