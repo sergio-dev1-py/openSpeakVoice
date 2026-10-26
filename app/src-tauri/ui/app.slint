@@ -2,6 +2,24 @@ import { Button, CheckBox, ComboBox, LineEdit, ScrollView, Slider, Palette } fro
 
 export { Palette }
 
+component WaveBar inherits Rectangle {
+    in property <float> level: 0.0;
+    in property <color> bar-color: #ffffff;
+    property <length> bar-height: 2px + level * 12px;
+
+    width: 2px;
+    height: 100%;
+    background: transparent;
+
+    Rectangle {
+        width: 2px;
+        height: parent.bar-height;
+        y: (parent.height - parent.bar-height) / 2;
+        border-radius: 1px;
+        background: parent.bar-color;
+    }
+}
+
 export struct ModelRow {
     name: string,
     title: string,
@@ -27,9 +45,8 @@ export component PillWindow inherits Window {
     in property <color> accent: #8ab4ff;
     in property <color> wave-color: #8ab4ff;
     in property <[float]> levels: [
-        0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
-        0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
-        0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02
+        0.06, 0.10, 0.16, 0.23, 0.30, 0.37, 0.43, 0.48,
+        0.48, 0.43, 0.37, 0.30, 0.23, 0.16, 0.10, 0.06
     ];
 
     callback toggle();
@@ -45,8 +62,12 @@ export component PillWindow inherits Window {
     callback request-menu(length, length);
 
     title: "VoiceToText";
-    width: 121px;
-    height: 32px;
+    preferred-width: 121px;
+    preferred-height: 32px;
+    min-width: 121px;
+    max-width: 121px;
+    min-height: 32px;
+    max-height: 32px;
     no-frame: true;
     background: transparent;
     always-on-top: true;
@@ -75,6 +96,8 @@ export component PillWindow inherits Window {
             }
         }
 
+        // Fixed geometry: 121x32, 16 px radius, 10 px left inset.
+        // Icon 13x20 • wave 56x22 • button 24x24 at the right.
         Rectangle {
             x: 0;
             y: 0;
@@ -84,66 +107,104 @@ export component PillWindow inherits Window {
             border-width: 1.5px;
             border-color: root.listening || root.transcribing ? root.active-border : root.pill-border;
             background: @linear-gradient(180deg, root.bg1 0%, root.bg2 100%);
+        }
 
-                HorizontalLayout {
-                    padding-left: 7px;
-                    padding-right: 7px;
-                    spacing: 5px;
-                    alignment: center;
+        Image {
+            x: 10px;
+            y: 6px;
+            width: 13px;
+            height: 20px;
+            image-fit: contain;
+            source: root.dark ? @image-url("../icons/bolt-white.png") : @image-url("../icons/bolt-black.png");
+        }
 
-                    Image {
-                        width: 12px;
-                        height: 18px;
-                        image-fit: contain;
-                        source: root.dark ? @image-url("../icons/tray-white.png") : @image-url("../icons/tray-black.png");
-                    }
+        Rectangle {
+            x: 30px;
+            y: 5px;
+            width: 56px;
+            height: 22px;
+            background: transparent;
 
-                    HorizontalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 0.6px;
-                        alignment: center;
-                        for level in root.levels : Rectangle {
-                            width: 1.3px;
-                            height: 1.6px + level * 12px;
-                            border-radius: 0.65px;
-                            background: root.wave-color;
-                        }
-                    }
+            HorizontalLayout {
+                width: 100%;
+                height: 100%;
+                spacing: 1.5px;
+                alignment: center;
+                for level in root.levels : WaveBar {
+                    level: level;
+                    bar-color: root.wave-color;
+                }
+            }
+        }
 
-                    start-btn := Rectangle {
-                        width: 24px;
-                        height: 24px;
-                        border-radius: 12px;
-                        border-width: 1px;
-                        border-color: root.listening ? root.stop-border : root.button-border;
-                        background: root.listening ? root.stop-bg : root.button-bg;
-                        opacity: root.transcribing ? 0.45 : 1.0;
+        start-btn := Rectangle {
+            x: 90px;
+            y: 4px;
+            width: 24px;
+            height: 24px;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: root.listening ? root.stop-border : root.button-border;
+            background: root.listening ? root.stop-bg : root.button-bg;
+            opacity: root.transcribing ? 0.45 : 1.0;
 
-                        Text {
-                            text: root.transcribing ? "…" : root.listening ? "■" : "▶";
-                            color: root.listening ? root.stop-color : root.play-color;
-                            font-size: 11px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
+            // Vector transport glyphs: no emoji/tofu fallback from the system font.
+            if !root.listening && !root.transcribing : Path {
+                x: 8px;
+                y: 7px;
+                width: 8px;
+                height: 10px;
+                commands: "M 0 0 L 8 5 L 0 10 Z";
+                fill: root.play-color;
+            }
+            if root.listening : Rectangle {
+                x: 9px;
+                y: 9px;
+                width: 7px;
+                height: 7px;
+                border-radius: 1px;
+                background: root.stop-color;
+            }
+            if root.transcribing : Rectangle {
+                x: 8px;
+                y: 11px;
+                width: 3px;
+                height: 3px;
+                border-radius: 1.5px;
+                background: root.play-color;
+            }
+            if root.transcribing : Rectangle {
+                x: 11px;
+                y: 11px;
+                width: 3px;
+                height: 3px;
+                border-radius: 1.5px;
+                background: root.play-color;
+            }
+            if root.transcribing : Rectangle {
+                x: 14px;
+                y: 11px;
+                width: 3px;
+                height: 3px;
+                border-radius: 1.5px;
+                background: root.play-color;
+            }
 
-                        TouchArea {
-                            clicked => { root.toggle(); }
-                            pointer-event(event) => {
-                                // The button's TouchArea consumes right presses,
-                                // so request the shared context menu explicitly.
-                                if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
-                                    root.request-menu(
-                                        start-btn.absolute-position.x + start-btn.width / 2,
-                                        start-btn.absolute-position.y + start-btn.height / 2
-                                    );
-                                }
-                            }
-                        }
+            TouchArea {
+                clicked => { root.toggle(); }
+                pointer-event(event) => {
+                    // The button's TouchArea consumes right presses,
+                    // so request the shared context menu explicitly.
+                    if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                        root.request-menu(
+                            start-btn.absolute-position.x + start-btn.width / 2,
+                            start-btn.absolute-position.y + start-btn.height / 2
+                        );
                     }
                 }
             }
         }
+    }
 }
 
 component MenuRow inherits Rectangle {

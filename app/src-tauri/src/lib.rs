@@ -33,8 +33,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const WAVE_BARS: usize = 28;
-const REST_LEVEL: f32 = 0.02;
+const WAVE_BARS: usize = 16;
+const REST_LEVEL: f32 = 0.06;
+/// Static symmetric wave shown while idle (same silhouette as the legacy
+/// widget, without any animation or repaint loop).
+const REST_WAVE: [f32; WAVE_BARS] = [
+    0.06, 0.10, 0.16, 0.23, 0.30, 0.37, 0.43, 0.48, 0.48, 0.43, 0.37, 0.30, 0.23, 0.16, 0.10, 0.06,
+];
 const IDLE_TICK_MS: u64 = 100;
 const RECORDING_TICK_MS: u64 = 33;
 const POSITION_SAVE_DELAY: Duration = Duration::from_millis(500);
@@ -50,6 +55,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         std::env::set_var("SLINT_BACKEND", "winit-software");
     }
     logger::init(settings::app_data_dir());
+    std::panic::set_hook(Box::new(|info| {
+        log::error!("panic: {info}");
+    }));
 
     let settings = SettingsService::new()
         .unwrap_or_else(|e| panic!("No se pudo inicializar la configuración: {e}"));
@@ -150,6 +158,7 @@ struct AppUi {
     levels: RefCell<Vec<f32>>,
     hue: Cell<f32>,
     last_state: Cell<u8>,
+    pill_chrome_ready: Cell<bool>,
     last_seen_pos: Cell<(i32, i32)>,
     saved_pos: Cell<(i32, i32)>,
     pending_pos_save: Cell<Option<Instant>>,
@@ -180,9 +189,10 @@ impl AppUi {
             hotkey_manager: RefCell::new(None),
             current_hotkey: RefCell::new(None),
             visual: RefCell::new(visual),
-            levels: RefCell::new(vec![REST_LEVEL; WAVE_BARS]),
+            levels: RefCell::new(REST_WAVE.to_vec()),
             hue: Cell::new(0.0),
             last_state: Cell::new(STATE_IDLE),
+            pill_chrome_ready: Cell::new(false),
             last_seen_pos: Cell::new(pos),
             saved_pos: Cell::new(pos),
             pending_pos_save: Cell::new(None),
@@ -341,7 +351,7 @@ impl AppUi {
             return;
         }
         self.pill.window().set_position(pos);
-        apply_tool_window(&self.pill.window(), true, true);
+        apply_tool_window(self.pill.window(), true, true, true);
         let actual = self.pill.window().position();
         self.last_seen_pos.set((actual.x, actual.y));
         self.saved_pos.set((actual.x, actual.y));
@@ -365,6 +375,7 @@ impl AppUi {
         if self.quitting.get() {
             return;
         }
+        self.ensure_pill_chrome();
         self.core.stop_if_too_long();
         self.poll_hotkey();
         self.check_menu_outside_click();
@@ -456,7 +467,7 @@ impl AppUi {
         if state != self.last_state.get() {
             self.last_state.set(state);
             if listening {
-                self.levels.borrow_mut().fill(REST_LEVEL);
+                *self.levels.borrow_mut() = REST_WAVE.to_vec();
                 self.push_levels();
             } else {
                 self.reset_levels();
@@ -500,13 +511,15 @@ impl AppUi {
 
     fn reset_levels(&self) {
         let mut levels = self.levels.borrow_mut();
-        if levels
-            .iter()
-            .all(|v| (*v - REST_LEVEL).abs() < f32::EPSILON)
+        if levels.len() == REST_WAVE.len()
+            && levels
+                .iter()
+                .zip(REST_WAVE.iter())
+                .all(|(current, rest)| (*current - *rest).abs() < f32::EPSILON)
         {
             return;
         }
-        levels.fill(REST_LEVEL);
+        *levels = REST_WAVE.to_vec();
         let snapshot = levels.clone();
         drop(levels);
         self.pill.set_levels(ModelRc::new(VecModel::from(snapshot)));
@@ -520,7 +533,19 @@ impl AppUi {
     fn show_pill(&self) {
         self.close_menu();
         if self.pill.show().is_ok() {
-            apply_tool_window(&self.pill.window(), true, true);
+            // The Win32 handle may not be available immediately after show();
+            // the first UI tick retries until the overlay chrome is applied.
+            self.pill_chrome_ready
+                .set(apply_tool_window(self.pill.window(), true, true, true));
+        }
+    }
+
+    fn ensure_pill_chrome(&self) {
+        if self.pill_chrome_ready.get() {
+            return;
+        }
+        if apply_tool_window(self.pill.window(), true, true, true) {
+            self.pill_chrome_ready.set(true);
         }
     }
 
@@ -685,9 +710,9 @@ impl AppUi {
             self.menu.borrow_mut().take();
             return;
         }
-        apply_tool_window(&menu.window(), false, true);
-        position_menu(&menu.window(), &self.pill.window());
-        focus_window(&menu.window());
+        apply_tool_window(menu.window(), false, true, false);
+        position_menu(menu.window(), self.pill.window());
+        focus_window(menu.window());
         menu.invoke_focus_menu();
         self.menu_opened_at.set(Some(Instant::now()));
 
@@ -707,8 +732,11 @@ impl AppUi {
         if !menu.window().is_visible() {
             return;
         }
-        position_menu(&menu.window(), &self.pill.window());
-        focus_window(&menu.window());
+        // The handle is available now; retry the overlay chrome that could not
+        // be applied immediately after show().
+        let _ = apply_tool_window(menu.window(), false, true, false);
+        position_menu(menu.window(), self.pill.window());
+        focus_window(menu.window());
         menu.invoke_focus_menu();
     }
 
@@ -976,8 +1004,8 @@ impl AppUi {
             log::warn!("failed to show toast: {e}");
             return;
         }
-        apply_tool_window(&toast.window(), true, true);
-        position_toast(&toast.window(), &self.pill.window());
+        apply_tool_window(toast.window(), true, true, false);
+        position_toast(toast.window(), self.pill.window());
         let ms = if is_error {
             ERROR_TOAST_MS
         } else {
@@ -1004,8 +1032,8 @@ impl AppUi {
             return;
         };
         if toast.window().is_visible() {
-            apply_tool_window(&toast.window(), true, true);
-            position_toast(&toast.window(), &self.pill.window());
+            let _ = apply_tool_window(toast.window(), true, true, false);
+            position_toast(toast.window(), self.pill.window());
         }
     }
 
@@ -1048,8 +1076,9 @@ impl AppUi {
             self.populate_management(&win, view);
             apply_management_palette(&win, self.visual.borrow().dark);
             if win.show().is_ok() {
-                center_window(&win.window());
-                focus_window(&win.window());
+                apply_tool_window(win.window(), false, false, false);
+                center_window(win.window());
+                focus_window(win.window());
             }
             return;
         }
@@ -1070,8 +1099,9 @@ impl AppUi {
             self.management.borrow_mut().take();
             return;
         }
-        center_window(&win.window());
-        focus_window(&win.window());
+        apply_tool_window(win.window(), false, false, false);
+        center_window(win.window());
+        focus_window(win.window());
         self.defer_management_position();
     }
 
@@ -1086,8 +1116,9 @@ impl AppUi {
                     .map(|win| win.clone_strong())
                 {
                     if win.window().is_visible() {
-                        center_window(&win.window());
-                        focus_window(&win.window());
+                        let _ = apply_tool_window(win.window(), false, false, false);
+                        center_window(win.window());
+                        focus_window(win.window());
                     }
                 }
             }
@@ -1629,36 +1660,118 @@ fn hwnd_of(_window: &slint::Window) -> Option<isize> {
 }
 
 #[cfg(windows)]
-fn apply_tool_window(window: &slint::Window, no_activate: bool, topmost: bool) {
+fn apply_tool_window(
+    window: &slint::Window,
+    no_activate: bool,
+    topmost: bool,
+    rounded: bool,
+) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+        GWL_EXSTYLE, HWND_TOP, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOSIZE, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW,
     };
-    let Some(hwnd) = hwnd_of(window) else { return };
+    let Some(hwnd) = hwnd_of(window) else {
+        return false;
+    };
     let hwnd = hwnd as _;
     unsafe {
-        let mut style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let before = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let mut style = before;
         style |= WS_EX_TOOLWINDOW as isize;
+        style &= !(WS_EX_APPWINDOW as isize);
         if no_activate {
             style |= WS_EX_NOACTIVATE as isize;
+        } else {
+            style &= !(WS_EX_NOACTIVATE as isize);
         }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style);
-        if topmost {
-            SetWindowPos(
+        let after = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        log::info!(
+            "tool window chrome: hwnd=0x{:X} ex_before=0x{before:X} ex_after=0x{after:X}",
+            hwnd as isize
+        );
+        SetWindowPos(
+            hwnd,
+            if topmost { HWND_TOPMOST } else { HWND_TOP },
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+
+        // Changing GWL_EXSTYLE on an already-visible window does not always
+        // remove its taskbar button. Hide/show once, and apply the pill region
+        // while hidden so the square window is never visible.
+        let visible = IsWindowVisible(hwnd) != 0;
+        if visible {
+            ShowWindow(hwnd, SW_HIDE);
+        }
+        if rounded {
+            apply_rounded_region(window);
+        }
+        if visible {
+            ShowWindow(
                 hwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                if no_activate {
+                    SW_SHOWNOACTIVATE
+                } else {
+                    SW_SHOW
+                },
             );
+        }
+    }
+    true
+}
+
+#[cfg(not(windows))]
+fn apply_tool_window(
+    _window: &slint::Window,
+    _no_activate: bool,
+    _topmost: bool,
+    _rounded: bool,
+) -> bool {
+    true
+}
+
+#[cfg(windows)]
+fn apply_rounded_region(window: &slint::Window) {
+    use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, DeleteObject, SetWindowRgn};
+
+    const PILL_WIDTH: f32 = 121.0;
+    const PILL_HEIGHT: f32 = 32.0;
+
+    let Some(hwnd) = hwnd_of(window) else { return };
+    let hwnd = hwnd as _;
+    // winit can grow the native window to 136x39 to accommodate its internal
+    // frame bookkeeping. The visible pill is always 121x32 logical pixels, so
+    // shape the region from those fixed dimensions and the current DPI scale.
+    let scale = window.scale_factor().max(0.5);
+    let width = (PILL_WIDTH * scale).round() as i32;
+    let height = (PILL_HEIGHT * scale).round() as i32;
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    unsafe {
+        // Ellipse diameter = pill height: the ends are perfect semicircles.
+        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, height, height);
+        if region.is_null() {
+            log::warn!("CreateRoundRectRgn failed");
+            return;
+        }
+        if SetWindowRgn(hwnd, region, 1) == 0 {
+            let _ = DeleteObject(region as _);
+            log::warn!("SetWindowRgn failed");
+        } else {
+            log::info!("pill region applied: {width}x{height} (scale {scale})");
         }
     }
 }
 
 #[cfg(not(windows))]
-fn apply_tool_window(_window: &slint::Window, _no_activate: bool, _topmost: bool) {}
+fn apply_rounded_region(_window: &slint::Window) {}
 
 #[cfg(windows)]
 fn focus_window(window: &slint::Window) {
