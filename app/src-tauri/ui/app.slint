@@ -44,6 +44,10 @@ export component PillWindow inherits Window {
     in property <string> mode-label: "Transcripción";
     in property <color> accent: #8ab4ff;
     in property <color> wave-color: #8ab4ff;
+    // Toggled while the native window is being dragged. A 1/255 alpha change
+    // makes Slint mark the whole software-rendered surface dirty, so moving
+    // the HWND never leaves the transparent window showing the desktop below.
+    in property <bool> repaint-flash: false;
     in property <[float]> levels: [
         0.06, 0.10, 0.16, 0.23, 0.30, 0.37, 0.43, 0.48,
         0.48, 0.43, 0.37, 0.30, 0.23, 0.16, 0.10, 0.06
@@ -203,6 +207,12 @@ export component PillWindow inherits Window {
                     }
                 }
             }
+        }
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: root.repaint-flash ? #01000000 : #00000000;
         }
     }
 }

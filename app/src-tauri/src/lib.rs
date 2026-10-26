@@ -30,6 +30,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -43,6 +44,7 @@ const REST_WAVE: [f32; WAVE_BARS] = [
     0.06, 0.10, 0.16, 0.23, 0.30, 0.37, 0.43, 0.48, 0.48, 0.43, 0.37, 0.30, 0.23, 0.16, 0.10, 0.06,
 ];
 const IDLE_TICK_MS: u64 = 100;
+const DRAG_TICK_MS: u64 = 16;
 const RECORDING_TICK_MS: u64 = 33;
 const POSITION_SAVE_DELAY: Duration = Duration::from_millis(500);
 const ERROR_TOAST_MS: u64 = 5_000;
@@ -161,6 +163,8 @@ struct AppUi {
     hue: Cell<f32>,
     last_state: Cell<u8>,
     pill_chrome_ready: Cell<bool>,
+    drag_active: Arc<AtomicBool>,
+    drag_was_active: Cell<bool>,
     last_seen_pos: Cell<(i32, i32)>,
     saved_pos: Cell<(i32, i32)>,
     pending_pos_save: Cell<Option<Instant>>,
@@ -195,6 +199,8 @@ impl AppUi {
             hue: Cell::new(0.0),
             last_state: Cell::new(STATE_IDLE),
             pill_chrome_ready: Cell::new(false),
+            drag_active: Arc::new(AtomicBool::new(false)),
+            drag_was_active: Cell::new(false),
             last_seen_pos: Cell::new(pos),
             saved_pos: Cell::new(pos),
             pending_pos_save: Cell::new(None),
@@ -387,7 +393,21 @@ impl AppUi {
         self.update_position_save();
         self.update_toast();
 
-        let wanted = if self.core.is_listening() || self.menu.borrow().is_some() {
+        // The drag worker moves the native window directly. Slint's software
+        // surface must be repainted afterwards, otherwise the transparent
+        // pixels reveal whatever is behind the pill (a browser tab, usually).
+        let dragging = self.drag_active.load(Ordering::Relaxed);
+        if dragging || self.drag_was_active.get() {
+            // Force a full-surface repaint; request_redraw alone only asks for
+            // a frame, while the software renderer may have no damage region.
+            self.pill.set_repaint_flash(!self.pill.get_repaint_flash());
+            self.pill.window().request_redraw();
+        }
+        self.drag_was_active.set(dragging);
+
+        let wanted = if dragging {
+            DRAG_TICK_MS
+        } else if self.core.is_listening() || self.menu.borrow().is_some() {
             RECORDING_TICK_MS
         } else {
             IDLE_TICK_MS
@@ -607,14 +627,20 @@ impl AppUi {
             return;
         };
         let core = Arc::clone(&self.core);
+        let drag_active = Arc::clone(&self.drag_active);
+        self.tick_ms.set(DRAG_TICK_MS);
+        self.timer.set_interval(Duration::from_millis(DRAG_TICK_MS));
+        self.pill.window().request_redraw();
         let _ = std::thread::Builder::new()
             .name("pill-drag".into())
             .spawn(move || {
+                drag_active.store(true, Ordering::SeqCst);
                 let hwnd = hwnd as _;
                 unsafe {
                     let mut cursor_start = POINT { x: 0, y: 0 };
                     let mut rect: RECT = std::mem::zeroed();
                     if GetCursorPos(&mut cursor_start) == 0 || GetWindowRect(hwnd, &mut rect) == 0 {
+                        drag_active.store(false, Ordering::SeqCst);
                         return;
                     }
                     let start_cursor = (cursor_start.x, cursor_start.y);
@@ -661,6 +687,7 @@ impl AppUi {
                             });
                         }
                     }
+                    drag_active.store(false, Ordering::SeqCst);
                 }
             });
     }
@@ -1670,9 +1697,10 @@ fn apply_tool_window(
 ) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-        GWL_EXSTYLE, HWND_TOP, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
-        SWP_NOSIZE, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW,
+        GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+        SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WS_BORDER, WS_CAPTION,
+        WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
+        WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
     };
     let Some(hwnd) = hwnd_of(window) else {
         return false;
@@ -1694,6 +1722,23 @@ fn apply_tool_window(
             "tool window chrome: hwnd=0x{:X} ex_before=0x{before:X} ex_after=0x{after:X}",
             hwnd as isize
         );
+        if rounded {
+            // winit keeps WS_CAPTION/WS_SYSMENU internally even for
+            // `no-frame: true`. While dragging, Windows can then paint the
+            // native title bar (light blue "VoiceToText" strip) over the pill.
+            // Turn it into a true popup; the fixed 121x32 region below keeps
+            // the visible widget size and rounded silhouette.
+            let mut base_style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            base_style &= !((WS_CAPTION
+                | WS_BORDER
+                | WS_DLGFRAME
+                | WS_THICKFRAME
+                | WS_SYSMENU
+                | WS_MINIMIZEBOX
+                | WS_MAXIMIZEBOX) as isize);
+            base_style |= WS_POPUP as isize;
+            SetWindowLongPtrW(hwnd, GWL_STYLE, base_style);
+        }
         SetWindowPos(
             hwnd,
             if topmost { HWND_TOPMOST } else { HWND_TOP },
